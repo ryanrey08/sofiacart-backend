@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     libjpeg62-turbo-dev \
     libfreetype6-dev \
     libzip-dev \
+    libonig-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip opcache \
     && apt-get clean \
@@ -19,7 +20,7 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 WORKDIR /var/www
 
 COPY composer.json composer.lock ./
-RUN composer install --no-interaction --prefer-dist --no-scripts --optimize-autoloader
+RUN COMPOSER_CACHE_DIR=/tmp/composer-cache composer install --no-interaction --prefer-source --no-cache --no-dev --no-scripts --optimize-autoloader
 
 COPY . .
 

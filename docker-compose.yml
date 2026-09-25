@@ -7,7 +7,8 @@ services:
     working_dir: /var/www
     volumes:
       - ./:/var/www
-    command: sh -c "[ -f .env ] || cp .env.example .env; composer install --no-interaction --prefer-dist && (grep -q "^APP_KEY=base64:" .env || php artisan key:generate --force) && php-fpm"
+      - vendor_data:/var/www/vendor
+    command: sh -c "git config --global --add safe.directory /var/www || true; [ -f .env ] || cp .env.example .env; (grep -q '^APP_KEY=base64:' .env || php artisan key:generate --force) && php-fpm"
     depends_on:
       db:
         condition: service_healthy
@@ -64,3 +65,4 @@ services:
 
 volumes:
   mysql_data:
+  vendor_data:
