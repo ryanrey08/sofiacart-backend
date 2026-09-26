@@ -3,7 +3,6 @@
 namespace Database\Factories;
 
 use App\Enums\ProductStatus;
-use App\Models\Category;
 use App\Models\Merchant;
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Factories\Factory;
