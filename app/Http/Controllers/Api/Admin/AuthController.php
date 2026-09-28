@@ -147,7 +147,7 @@ class AuthController extends Controller
 
         $user = User::where('email', $validated['email'])->first();
 
-        if ($user?->isAdmin()) {
+        if ($user?->isActiveAdmin()) {
             Password::broker('users')->sendResetLink(['email' => $validated['email']]);
         }
 

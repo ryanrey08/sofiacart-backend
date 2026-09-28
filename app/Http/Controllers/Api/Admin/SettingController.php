@@ -19,12 +19,14 @@ class SettingController extends Controller
     {
         DB::transaction(function () use ($request): void {
             foreach ($request->validated('settings') as $setting) {
+                $existing = AdminSetting::query()->firstWhere('key', $setting['key']);
+
                 AdminSetting::query()->updateOrCreate(
                     ['key' => $setting['key']],
                     [
                         'value' => $setting['value'] ?? null,
                         'description' => $setting['description'] ?? null,
-                        'is_secret' => $setting['is_secret'] ?? false,
+                        'is_secret' => $setting['is_secret'] ?? $existing?->is_secret ?? false,
                     ],
                 );
             }

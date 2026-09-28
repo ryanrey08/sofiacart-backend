@@ -53,6 +53,7 @@ class DashboardController extends Controller
                         ->orderBy('status')
                         ->get(),
                     'merchant_statuses' => Merchant::query()
+                        ->whereBetween('created_at', [$dateFrom, $dateTo])
                         ->select('status', DB::raw('COUNT(*) as total'))
                         ->groupBy('status')
                         ->orderBy('status')

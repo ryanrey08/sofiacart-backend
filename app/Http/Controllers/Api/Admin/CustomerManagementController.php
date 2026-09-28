@@ -35,7 +35,7 @@ class CustomerManagementController extends Controller
     {
         return response()->json([
             'data' => array_merge(
-                AdminCustomerResource::make($customer->loadCount('orders'))->resolve(),
+                AdminCustomerResource::make($customer->loadCount('orders'))->toArray($request),
                 [
                     'merchant_id' => $customer->merchant_id,
                     'recent_orders' => OrderResource::collection(
