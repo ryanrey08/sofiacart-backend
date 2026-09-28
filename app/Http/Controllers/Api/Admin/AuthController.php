@@ -185,13 +185,20 @@ class AuthController extends Controller
             'password' => ['required', 'confirmed', 'min:8'],
         ]);
 
+        $resetUser = User::where('email', $validated['email'])->first();
+
+        if (! $resetUser?->isActiveAdmin()) {
+            throw ValidationException::withMessages([
+                'email' => ['This password reset request is not valid.'],
+            ]);
+        }
+
         $status = Password::broker('users')->reset(
             $validated,
             function (User $user, string $password): void {
                 $user->forceFill([
                     'password' => $password,
                     'remember_token' => Str::random(60),
-                    'is_active' => true,
                 ])->save();
 
                 $user->tokens()->delete();
@@ -206,7 +213,7 @@ class AuthController extends Controller
             ]);
         }
 
-        if ($user = User::where('email', $validated['email'])->first()) {
+        if (($user = User::where('email', $validated['email'])->first())?->isActiveAdmin()) {
             $this->auditLogger->log('admin.auth.password_reset', $user, $user, $request, 'Admin password reset completed.');
         }
 

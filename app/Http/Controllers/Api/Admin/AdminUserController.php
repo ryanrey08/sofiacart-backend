@@ -121,7 +121,9 @@ class AdminUserController extends Controller
 
             $user->load('adminRoles.permissions', 'adminPermissions');
 
-            if (! $user->isActiveAdmin() || $user->allAdminPermissions()->isEmpty()) {
+            if (! $user->isActiveAdmin()
+                || ($roles !== null && $user->adminRoles->isEmpty())
+                || $user->allAdminPermissions()->isEmpty()) {
                 $user->tokens()->delete();
             }
         });

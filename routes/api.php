@@ -175,10 +175,12 @@ Route::middleware(['auth:sanctum', 'admin', 'admin.token', 'admin.audit'])->pref
         ->middleware('admin.permission:users.view');
 
     Route::apiResource('roles', AdminRoleController::class)
+        ->except(['create', 'edit'])
         ->middlewareFor(['index', 'show'], 'admin.permission:roles.view')
         ->middlewareFor(['store', 'update', 'destroy'], 'admin.permission:roles.manage');
 
     Route::apiResource('permissions', AdminPermissionController::class)
+        ->except(['create', 'edit'])
         ->middlewareFor(['index', 'show'], 'admin.permission:permissions.view')
         ->middlewareFor(['store', 'update', 'destroy'], 'admin.permission:permissions.manage');
 

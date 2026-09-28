@@ -30,12 +30,12 @@
 
 ## Files modified in this session
 
-- `/home/runner/work/sofiacart-backend/sofiacart-backend/app/Http/Controllers/Api/Admin/AuthController.php`
-- `/home/runner/work/sofiacart-backend/sofiacart-backend/app/Http/Controllers/Api/Admin/AdminUserController.php`
-- `/home/runner/work/sofiacart-backend/sofiacart-backend/routes/api.php`
-- `/home/runner/work/sofiacart-backend/sofiacart-backend/tests/Feature/Admin/AdminBackendTest.php`
-- `/home/runner/work/sofiacart-backend/sofiacart-backend/README.md`
-- `/home/runner/work/sofiacart-backend/sofiacart-backend/SOFIACART_IMPLEMENTATION_STATUS.md`
+- `app/Http/Controllers/Api/Admin/AuthController.php`
+- `app/Http/Controllers/Api/Admin/AdminUserController.php`
+- `routes/api.php`
+- `tests/Feature/Admin/AdminBackendTest.php`
+- `README.md`
+- `SOFIACART_IMPLEMENTATION_STATUS.md`
 
 ## Tests executed and results
 
