@@ -9,6 +9,8 @@
   - `GET /api/admin/auth/sessions`
   - `DELETE /api/admin/auth/sessions/{tokenId}`
 - Existing order/refund rules were hardened with explicit order status transitions and refundable-balance enforcement.
+- Secret admin settings now remain masked in API responses and keep their stored values when only non-value metadata is updated.
+- Admin system log responses now redact obvious secret-bearing metadata keys such as tokens, passwords, API keys, and secrets.
 
 ## Remaining tasks
 
@@ -32,6 +34,8 @@
 
 - `app/Http/Controllers/Api/Admin/AuthController.php`
 - `app/Http/Controllers/Api/Admin/AdminUserController.php`
+- `app/Http/Controllers/Api/Admin/SettingController.php`
+- `app/Http/Resources/Admin/AdminAuditLogResource.php`
 - `routes/api.php`
 - `tests/Feature/Admin/AdminBackendTest.php`
 - `README.md`
@@ -41,14 +45,22 @@
 
 - `php artisan test tests/Feature/Admin/AdminBackendTest.php` ✅ passed
 - `php artisan test` ✅ passed
+- `runtime-tools-secret_scanning` on `app/Http/Controllers/Api/Admin/SettingController.php`, `app/Http/Resources/Admin/AdminAuditLogResource.php`, and `tests/Feature/Admin/AdminBackendTest.php` ✅ no secrets detected
+- `php -l app/Http/Controllers/Api/Admin/SettingController.php` ✅ no syntax errors
+- `php -l app/Http/Resources/Admin/AdminAuditLogResource.php` ✅ no syntax errors
+- `php -l tests/Feature/Admin/AdminBackendTest.php` ✅ no syntax errors
+- `composer install --no-interaction --prefer-dist` ❌ failed because GitHub authentication was required to download dist packages, so Laravel dependencies could not be restored in this session
+- `php artisan pint` / targeted Laravel feature tests for the latest settings/log changes ⚠️ blocked because `vendor/` is currently missing and Composer install failed
 
 ## Blockers
 
 - Frontend repository unavailable in the current workspace.
 - Laravel Boost bootstrap is partially blocked by missing `boost:*` Artisan commands after package installation.
+- Laravel dependency restoration is currently blocked in this session because `composer install` could not authenticate against GitHub to download required packages, leaving `vendor/` unavailable for `php artisan` commands.
 
 ## Exact next steps
 
-1. Run targeted backend tests for the updated admin session and RBAC flows.
-2. Secret-scan modified files and perform final validation.
-3. If a future session includes the frontend repository, implement the remaining admin UI and RBAC route/menu protection there.
+1. Restore `vendor/` successfully (or provide a workspace with dependencies already installed), then run `php artisan pint` and targeted admin feature tests covering settings masking/preservation and system-log redaction.
+2. Re-run any remaining backend validation that is still unverified; the last `parallel_validation` attempt in the earlier session timed out and should still be treated as unverified.
+3. Continue expanding admin feature coverage across the remaining controller surface once Laravel test execution is available again.
+4. If a future session includes the frontend repository, implement the remaining admin UI and RBAC route/menu protection there.

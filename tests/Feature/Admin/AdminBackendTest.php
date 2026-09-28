@@ -9,8 +9,10 @@ use App\Enums\OrderPaymentStatus;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentStatus;
 use App\Enums\RefundStatus;
+use App\Models\AdminAuditLog;
 use App\Models\AdminPermission;
 use App\Models\AdminRole;
+use App\Models\AdminSetting;
 use App\Models\Merchant;
 use App\Models\Order;
 use App\Models\Payment;
@@ -350,6 +352,84 @@ class AdminBackendTest extends TestCase
         $this->deleteJson("/api/admin/permissions/{$systemPermission->id}")
             ->assertStatus(422)
             ->assertJsonValidationErrors('permission');
+    }
+
+    public function test_secret_settings_remain_masked_and_preserve_existing_values_when_only_metadata_changes(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $setting = AdminSetting::query()->create([
+            'key' => 'payments.webhook_secret',
+            'value' => ['secret' => 'top-secret-value'],
+            'description' => 'Original description',
+            'is_secret' => true,
+        ]);
+
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
+
+        $this->getJson('/api/admin/settings')
+            ->assertOk()
+            ->assertJsonFragment([
+                'key' => 'payments.webhook_secret',
+                'is_secret' => true,
+            ])
+            ->assertJsonFragment([
+                'configured' => true,
+            ])
+            ->assertJsonMissing([
+                'value' => ['secret' => 'top-secret-value'],
+            ]);
+
+        $this->putJson('/api/admin/settings', [
+            'settings' => [[
+                'key' => $setting->key,
+                'description' => 'Updated description only',
+            ]],
+        ])->assertOk()
+            ->assertJsonFragment([
+                'key' => 'payments.webhook_secret',
+                'description' => 'Updated description only',
+            ])
+            ->assertJsonFragment([
+                'configured' => true,
+            ])
+            ->assertJsonMissing([
+                'value' => ['secret' => 'top-secret-value'],
+            ]);
+
+        $this->assertDatabaseHas('admin_settings', [
+            'id' => $setting->id,
+            'description' => 'Updated description only',
+            'is_secret' => true,
+        ]);
+        $this->assertSame(['secret' => 'top-secret-value'], $setting->fresh()->value);
+    }
+
+    public function test_system_logs_redact_sensitive_metadata_fields(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $log = AdminAuditLog::query()->create([
+            'actor_id' => $admin->id,
+            'action' => 'admin.settings.updated',
+            'description' => 'Updated settings.',
+            'metadata' => [
+                'token' => 'plain-token',
+                'api_key' => 'plain-api-key',
+                'nested' => [
+                    'password' => 'plain-password',
+                    'safe' => 'kept',
+                ],
+            ],
+            'created_at' => now(),
+        ]);
+
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
+
+        $this->getJson("/api/admin/logs/{$log->id}")
+            ->assertOk()
+            ->assertJsonPath('data.metadata.token', '[REDACTED]')
+            ->assertJsonPath('data.metadata.api_key', '[REDACTED]')
+            ->assertJsonPath('data.metadata.nested.password', '[REDACTED]')
+            ->assertJsonPath('data.metadata.nested.safe', 'kept');
     }
 
     protected function createAdminWithRole(string $roleSlug): User
