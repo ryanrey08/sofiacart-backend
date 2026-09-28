@@ -16,7 +16,7 @@
 
 - Expand feature coverage for the rest of the admin surface beyond the currently implemented auth/RBAC/session/merchant safeguards.
 - Decide whether any additional platform-specific data structures are required for merchant billing workflows, onboarding notes, or private-document delivery beyond audit-log metadata.
-- Evaluate whether Boost should remain as a project dependency; `composer require laravel/boost --dev` succeeded, but `php artisan boost:install` is unavailable in this environment because no `boost:*` Artisan commands are registered.
+- `laravel/boost` is currently committed as a development dependency because the repository bootstrap instructions required it, but `php artisan boost:install` is still unavailable in this environment because no `boost:*` Artisan commands are registered. Decide in a follow-up whether to keep that dependency or remove it once the bootstrap path is clarified.
 
 ### Frontend
 

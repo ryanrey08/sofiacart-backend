@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthController extends Controller
 {
@@ -74,7 +75,7 @@ class AuthController extends Controller
     public function logoutAll(Request $request): JsonResponse
     {
         $user = $request->user();
-        $deleted = $user?->tokens()->delete() ?? 0;
+        $deleted = $this->adminTokenQuery($user)->delete();
 
         if ($user) {
             $this->auditLogger->log('admin.auth.logout_all', $user, $user, $request, 'All admin sessions revoked.', [
@@ -99,8 +100,7 @@ class AuthController extends Controller
         $currentTokenId = $request->user()?->currentAccessToken()?->getKey();
 
         return response()->json([
-            'data' => $request->user()
-                ->tokens()
+            'data' => $this->adminTokenQuery($request->user())
                 ->latest()
                 ->get()
                 ->map(fn ($token): array => [
@@ -118,8 +118,7 @@ class AuthController extends Controller
 
     public function revokeSession(Request $request, int $tokenId): JsonResponse
     {
-        $token = $request->user()
-            ->tokens()
+        $token = $this->adminTokenQuery($request->user())
             ->whereKey($tokenId)
             ->firstOrFail();
 
@@ -132,6 +131,12 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Admin session revoked successfully.',
         ]);
+    }
+
+    protected function adminTokenQuery(?User $user)
+    {
+        return $user?->tokens()->whereJsonContains('abilities', 'admin')
+            ?? PersonalAccessToken::query()->whereRaw('1 = 0');
     }
 
     public function forgotPassword(Request $request): JsonResponse

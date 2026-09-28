@@ -121,6 +121,7 @@ class AdminBackendTest extends TestCase
         $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
         $firstToken = $admin->createToken('first-device', ['admin'])->accessToken;
         $secondToken = $admin->createToken('second-device', ['admin'])->accessToken;
+        $admin->createToken('storefront-device', ['storefront']);
 
         Sanctum::actingAs($admin, ['admin'], 'sanctum');
 
@@ -136,6 +137,7 @@ class AdminBackendTest extends TestCase
 
         $this->assertDatabaseMissing('personal_access_tokens', ['id' => $firstToken->id]);
         $this->assertDatabaseHas('personal_access_tokens', ['id' => $secondToken->id]);
+        $this->assertDatabaseHas('personal_access_tokens', ['name' => 'storefront-device']);
     }
 
     public function test_admin_can_revoke_all_sessions(): void
@@ -143,6 +145,7 @@ class AdminBackendTest extends TestCase
         $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
         $admin->createToken('first-device', ['admin']);
         $admin->createToken('second-device', ['admin']);
+        $admin->createToken('storefront-device', ['storefront']);
 
         Sanctum::actingAs($admin, ['admin'], 'sanctum');
 
@@ -150,7 +153,8 @@ class AdminBackendTest extends TestCase
             ->assertOk()
             ->assertJsonPath('message', 'All admin sessions revoked successfully.');
 
-        $this->assertDatabaseCount('personal_access_tokens', 0);
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->assertDatabaseHas('personal_access_tokens', ['name' => 'storefront-device']);
     }
 
     public function test_deactivating_admin_revokes_their_tokens(): void

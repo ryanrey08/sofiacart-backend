@@ -7,6 +7,7 @@ use App\Models\User;
 use Database\Seeders\AdminAuthorizationSeeder;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 
@@ -37,7 +38,7 @@ Artisan::command('admin:provision-super-admin {email} {name} {--phone=} {--force
             'name' => $this->argument('name'),
             'phone' => $this->option('phone') ?: null,
             'email_verified_at' => now(),
-            'password' => Str::password(32),
+            'password' => Hash::make(Str::password(32)),
         ],
     );
 

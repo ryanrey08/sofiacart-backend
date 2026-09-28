@@ -40,9 +40,9 @@ class PlatformReportsController extends Controller
     {
         $type = $request->string('type')->toString() ?: 'merchant_sales';
         $rows = match ($type) {
-            'payment_status' => $this->paymentStatusReport(500)->items(),
-            'order_status' => $this->orderStatusReport(500)->items(),
-            default => $this->merchantSalesReport(500)->items(),
+            'payment_status' => $this->paymentStatusQuery()->get(),
+            'order_status' => $this->orderStatusQuery()->get(),
+            default => $this->merchantSalesQuery()->get(),
         };
 
         return response()->streamDownload(function () use ($rows): void {
@@ -66,35 +66,47 @@ class PlatformReportsController extends Controller
 
     protected function merchantSalesReport(int $perPage): LengthAwarePaginator
     {
+        return $this->merchantSalesQuery()->paginate($perPage);
+    }
+
+    protected function paymentStatusReport(int $perPage): LengthAwarePaginator
+    {
+        return $this->paymentStatusQuery()->paginate($perPage);
+    }
+
+    protected function orderStatusReport(int $perPage): LengthAwarePaginator
+    {
+        return $this->orderStatusQuery()->paginate($perPage);
+    }
+
+    protected function merchantSalesQuery()
+    {
         return Merchant::query()
             ->leftJoin('orders', 'orders.merchant_id', '=', 'merchants.id')
             ->select('merchants.id', 'merchants.store_name', 'merchants.status')
             ->selectRaw('COALESCE(SUM(orders.total_amount), 0) as total_sales')
             ->selectRaw('COUNT(orders.id) as orders_count')
             ->groupBy('merchants.id', 'merchants.store_name', 'merchants.status')
-            ->orderByDesc('total_sales')
-            ->paginate($perPage);
+            ->orderByDesc('total_sales');
     }
 
-    protected function paymentStatusReport(int $perPage): LengthAwarePaginator
+    protected function paymentStatusQuery()
     {
         return Payment::query()
             ->select('status')
             ->selectRaw('COUNT(*) as payments_count')
             ->selectRaw('SUM(amount) as total_amount')
             ->groupBy('status')
-            ->orderBy('status')
-            ->paginate($perPage);
+            ->orderBy('status');
     }
 
-    protected function orderStatusReport(int $perPage): LengthAwarePaginator
+    protected function orderStatusQuery()
     {
         return Order::query()
             ->select('status', 'payment_status')
             ->selectRaw('COUNT(*) as orders_count')
             ->selectRaw('SUM(total_amount) as total_amount')
             ->groupBy('status', 'payment_status')
-            ->orderBy('status')
-            ->paginate($perPage);
+            ->orderBy('status');
     }
 }

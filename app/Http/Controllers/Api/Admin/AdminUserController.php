@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\AdminAuthorizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -61,7 +62,7 @@ class AdminUserController extends Controller
                 'email' => $validated['email'],
                 'phone' => $validated['phone'] ?? null,
                 'email_verified_at' => now(),
-                'password' => Str::password(32),
+                'password' => Hash::make(Str::password(32)),
             ]);
 
             $user->adminRoles()->sync($roleIds);
