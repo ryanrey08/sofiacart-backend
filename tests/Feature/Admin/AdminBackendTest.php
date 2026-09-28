@@ -52,8 +52,18 @@ class AdminBackendTest extends TestCase
         Sanctum::actingAs($merchant->user);
         $this->getJson('/api/admin/dashboard')->assertForbidden();
 
-        Sanctum::actingAs($admin);
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
         $this->getJson('/api/admin/dashboard')->assertOk();
+    }
+
+    public function test_non_admin_scoped_token_cannot_access_admin_routes(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        Sanctum::actingAs($admin, ['storefront'], 'sanctum');
+
+        $this->getJson('/api/admin/dashboard')
+            ->assertForbidden()
+            ->assertJsonPath('message', 'An admin-scoped API token is required.');
     }
 
     public function test_super_admin_can_create_admin_user_and_receive_password_setup_token(): void
@@ -61,7 +71,7 @@ class AdminBackendTest extends TestCase
         $actor = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
         $role = AdminRole::where('slug', AdminRoleRegistry::ADMIN)->firstOrFail();
 
-        Sanctum::actingAs($actor);
+        Sanctum::actingAs($actor, ['admin'], 'sanctum');
 
         $this->postJson('/api/admin/users', [
             'name' => 'Ops Admin',
@@ -94,7 +104,7 @@ class AdminBackendTest extends TestCase
 
         $superAdminRole = AdminRole::where('slug', AdminRoleRegistry::SUPER_ADMIN)->firstOrFail();
 
-        Sanctum::actingAs($actor);
+        Sanctum::actingAs($actor, ['admin'], 'sanctum');
 
         $this->postJson('/api/admin/users', [
             'name' => 'Blocked Admin',
@@ -108,7 +118,7 @@ class AdminBackendTest extends TestCase
     {
         $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
 
-        Sanctum::actingAs($admin);
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
 
         $this->patchJson("/api/admin/users/{$admin->id}", [
             'is_active' => false,
@@ -163,7 +173,7 @@ class AdminBackendTest extends TestCase
         $otherSuperAdmin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
         $otherSuperAdmin->createToken('target-device', ['admin']);
 
-        Sanctum::actingAs($superAdmin);
+        Sanctum::actingAs($superAdmin, ['admin'], 'sanctum');
 
         $this->patchJson("/api/admin/users/{$otherSuperAdmin->id}", [
             'is_active' => false,
@@ -181,7 +191,7 @@ class AdminBackendTest extends TestCase
         $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
         $merchant = Merchant::factory()->create(['status' => MerchantStatus::Pending]);
 
-        Sanctum::actingAs($admin);
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
 
         $this->patchJson("/api/admin/merchants/{$merchant->id}/status", [
             'status' => MerchantStatus::Verified->value,
@@ -213,7 +223,7 @@ class AdminBackendTest extends TestCase
             'amount' => 100,
         ]);
 
-        Sanctum::actingAs($admin);
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
 
         $this->postJson('/api/admin/refunds', [
             'merchant_id' => $merchant->id,
@@ -254,7 +264,7 @@ class AdminBackendTest extends TestCase
             'status' => RefundStatus::Processed,
         ]);
 
-        Sanctum::actingAs($admin);
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
 
         $this->patchJson("/api/admin/refunds/{$refund->id}", [
             'amount' => 50,
@@ -293,7 +303,7 @@ class AdminBackendTest extends TestCase
         $systemRole = AdminRole::where('slug', AdminRoleRegistry::ADMIN)->firstOrFail();
         $systemPermission = AdminPermission::where('name', AdminPermissionRegistry::DASHBOARD_VIEW)->firstOrFail();
 
-        Sanctum::actingAs($admin);
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
 
         $this->patchJson("/api/admin/roles/{$systemRole->id}", [
             'name' => 'Changed',

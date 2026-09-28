@@ -47,14 +47,14 @@ class PlatformReportsController extends Controller
 
         return response()->streamDownload(function () use ($rows): void {
             $handle = fopen('php://output', 'w');
-            if ($rows === []) {
+            if ($rows->isEmpty()) {
                 fputcsv($handle, ['no_data']);
                 fclose($handle);
 
                 return;
             }
 
-            fputcsv($handle, array_keys((array) $rows[0]));
+            fputcsv($handle, array_keys((array) $rows->first()));
             foreach ($rows as $row) {
                 fputcsv($handle, (array) $row);
             }

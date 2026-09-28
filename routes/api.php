@@ -37,7 +37,7 @@ Route::prefix('admin/auth')->group(function (): void {
     Route::post('/forgot-password', [AdminAuthController::class, 'forgotPassword'])->middleware('throttle:admin-auth');
     Route::post('/reset-password', [AdminAuthController::class, 'resetPassword'])->middleware('throttle:admin-auth');
 
-    Route::middleware(['auth:sanctum', 'admin'])->group(function (): void {
+    Route::middleware(['auth:sanctum', 'admin', 'admin.token'])->group(function (): void {
         Route::post('/logout', [AdminAuthController::class, 'logout']);
         Route::post('/logout-all', [AdminAuthController::class, 'logoutAll']);
         Route::get('/me', [AdminAuthController::class, 'me']);
@@ -72,7 +72,7 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function (): void {
     });
 });
 
-Route::middleware(['auth:sanctum', 'admin', 'admin.audit'])->prefix('admin')->group(function (): void {
+Route::middleware(['auth:sanctum', 'admin', 'admin.token', 'admin.audit'])->prefix('admin')->group(function (): void {
     Route::get('/dashboard', DashboardController::class)
         ->middleware('admin.permission:dashboard.view');
 

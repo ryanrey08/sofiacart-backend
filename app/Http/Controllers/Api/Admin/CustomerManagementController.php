@@ -39,7 +39,7 @@ class CustomerManagementController extends Controller
                 [
                     'merchant_id' => $customer->merchant_id,
                     'recent_orders' => OrderResource::collection(
-                        $customer->orders()->with(['items'])->latest('ordered_at')->limit(10)->get()
+                        $customer->orders()->with(['customer', 'items'])->latest('ordered_at')->limit(10)->get()
                     ),
                 ],
             ),
