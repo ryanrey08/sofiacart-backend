@@ -47,14 +47,14 @@ class PlatformReportsController extends Controller
 
         return response()->streamDownload(function () use ($rows): void {
             $handle = fopen('php://output', 'w');
+            fputcsv($handle, $this->exportColumns($type));
+
             if ($rows->isEmpty()) {
-                fputcsv($handle, ['no_data']);
                 fclose($handle);
 
                 return;
             }
 
-            fputcsv($handle, array_keys((array) $rows->first()));
             foreach ($rows as $row) {
                 fputcsv($handle, (array) $row);
             }
@@ -108,5 +108,14 @@ class PlatformReportsController extends Controller
             ->selectRaw('SUM(total_amount) as total_amount')
             ->groupBy('status', 'payment_status')
             ->orderBy('status');
+    }
+
+    protected function exportColumns(string $type): array
+    {
+        return match ($type) {
+            'payment_status' => ['status', 'payments_count', 'total_amount'],
+            'order_status' => ['status', 'payment_status', 'orders_count', 'total_amount'],
+            default => ['id', 'store_name', 'status', 'total_sales', 'orders_count'],
+        };
     }
 }

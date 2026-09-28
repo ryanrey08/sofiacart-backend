@@ -88,7 +88,7 @@ class MerchantManagementController extends Controller
         $merchant->load(['payments.refunds', 'transactions', 'orders']);
 
         $paymentsTotal = (float) $merchant->payments->sum('amount');
-        $refundsTotal = (float) $merchant->refunds->sum('amount');
+        $refundsTotal = (float) $merchant->payments->flatMap->refunds->sum('amount');
 
         return response()->json([
             'data' => [

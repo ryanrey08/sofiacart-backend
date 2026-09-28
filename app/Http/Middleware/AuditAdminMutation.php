@@ -10,6 +10,10 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AuditAdminMutation
 {
+    protected const EXCLUDED_ROUTE_NAMES = [
+        'admin.merchants.status',
+    ];
+
     public function __construct(
         protected AdminAuditLogger $auditLogger,
     ) {}
@@ -18,7 +22,7 @@ class AuditAdminMutation
     {
         $response = $next($request);
 
-        if ($request->isMethodSafe() || $response->getStatusCode() >= 400) {
+        if ($request->isMethodSafe() || $response->getStatusCode() >= 400 || $this->shouldSkipAudit($request)) {
             return $response;
         }
 
@@ -42,5 +46,10 @@ class AuditAdminMutation
         );
 
         return $response;
+    }
+
+    protected function shouldSkipAudit(Request $request): bool
+    {
+        return in_array($request->route()?->getName(), self::EXCLUDED_ROUTE_NAMES, true);
     }
 }

@@ -31,7 +31,7 @@ class CustomerManagementController extends Controller
         );
     }
 
-    public function show(Customer $customer)
+    public function show(Request $request, Customer $customer)
     {
         return response()->json([
             'data' => array_merge(

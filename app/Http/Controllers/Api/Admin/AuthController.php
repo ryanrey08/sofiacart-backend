@@ -11,6 +11,7 @@ use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -18,6 +19,8 @@ use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthController extends Controller
 {
+    protected const ADMIN_TOKEN_PREFIX = 'admin:';
+
     public function __construct(
         protected AdminAuditLogger $auditLogger,
     ) {}
@@ -42,7 +45,7 @@ class AuthController extends Controller
         }
 
         $token = $user->createToken(
-            $validated['device_name'] ?? 'admin-api-token',
+            $this->adminTokenName($validated['device_name'] ?? 'admin-api-token'),
             ['admin'],
             now()->addMinutes((int) config('admin.auth.token_ttl_minutes', 120)),
         )->plainTextToken;
@@ -105,7 +108,7 @@ class AuthController extends Controller
                 ->get()
                 ->map(fn ($token): array => [
                     'id' => $token->id,
-                    'name' => $token->name,
+                    'name' => Str::after($token->name, self::ADMIN_TOKEN_PREFIX),
                     'abilities' => $token->abilities,
                     'last_used_at' => $token->last_used_at?->toISOString(),
                     'created_at' => $token->created_at?->toISOString(),
@@ -135,8 +138,13 @@ class AuthController extends Controller
 
     protected function adminTokenQuery(?User $user)
     {
-        return $user?->tokens()->whereJsonContains('abilities', 'admin')
+        return $user?->tokens()->where('name', 'like', self::ADMIN_TOKEN_PREFIX.'%')
             ?? PersonalAccessToken::query()->whereRaw('1 = 0');
+    }
+
+    protected function adminTokenName(string $deviceName): string
+    {
+        return self::ADMIN_TOKEN_PREFIX.$deviceName;
     }
 
     public function forgotPassword(Request $request): JsonResponse
@@ -148,7 +156,14 @@ class AuthController extends Controller
         $user = User::where('email', $validated['email'])->first();
 
         if ($user?->isActiveAdmin()) {
-            Password::broker('users')->sendResetLink(['email' => $validated['email']]);
+            try {
+                Password::broker('users')->sendResetLink(['email' => $validated['email']]);
+            } catch (\Throwable $exception) {
+                Log::warning('Admin password reset link delivery failed.', [
+                    'email' => $validated['email'],
+                    'exception' => $exception->getMessage(),
+                ]);
+            }
         }
 
         return response()->json([

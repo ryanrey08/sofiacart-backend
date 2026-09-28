@@ -129,8 +129,8 @@ class AdminBackendTest extends TestCase
     public function test_admin_can_list_and_revoke_sessions(): void
     {
         $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
-        $firstToken = $admin->createToken('first-device', ['admin'])->accessToken;
-        $secondToken = $admin->createToken('second-device', ['admin'])->accessToken;
+        $firstToken = $admin->createToken('admin:first-device', ['admin'])->accessToken;
+        $secondToken = $admin->createToken('admin:second-device', ['admin'])->accessToken;
         $admin->createToken('storefront-device', ['storefront']);
 
         Sanctum::actingAs($admin, ['admin'], 'sanctum');
@@ -153,8 +153,8 @@ class AdminBackendTest extends TestCase
     public function test_admin_can_revoke_all_sessions(): void
     {
         $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
-        $admin->createToken('first-device', ['admin']);
-        $admin->createToken('second-device', ['admin']);
+        $admin->createToken('admin:first-device', ['admin']);
+        $admin->createToken('admin:second-device', ['admin']);
         $admin->createToken('storefront-device', ['storefront']);
 
         Sanctum::actingAs($admin, ['admin'], 'sanctum');

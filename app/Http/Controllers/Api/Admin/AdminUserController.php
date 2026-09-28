@@ -119,7 +119,9 @@ class AdminUserController extends Controller
                 $user->adminPermissions()->sync($permissions->pluck('id')->all());
             }
 
-            if (($validated['is_active'] ?? true) === false) {
+            $user->load('adminRoles.permissions', 'adminPermissions');
+
+            if (! $user->isActiveAdmin() || $user->allAdminPermissions()->isEmpty()) {
                 $user->tokens()->delete();
             }
         });
