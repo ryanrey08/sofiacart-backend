@@ -78,7 +78,7 @@ class AuthController extends Controller
     public function logoutAll(Request $request): JsonResponse
     {
         $user = $request->user();
-        $deleted = $this->adminTokenQuery($user)->delete();
+        $deleted = $this->adminTokens($user)->each->delete()->count();
 
         if ($user) {
             $this->auditLogger->log('admin.auth.logout_all', $user, $user, $request, 'All admin sessions revoked.', [
@@ -103,9 +103,8 @@ class AuthController extends Controller
         $currentTokenId = $request->user()?->currentAccessToken()?->getKey();
 
         return response()->json([
-            'data' => $this->adminTokenQuery($request->user())
-                ->latest()
-                ->get()
+            'data' => $this->adminTokens($request->user())
+                ->sortByDesc('created_at')
                 ->map(fn ($token): array => [
                     'id' => $token->id,
                     'name' => Str::after($token->name, self::ADMIN_TOKEN_PREFIX),
@@ -121,9 +120,10 @@ class AuthController extends Controller
 
     public function revokeSession(Request $request, int $tokenId): JsonResponse
     {
-        $token = $this->adminTokenQuery($request->user())
-            ->whereKey($tokenId)
-            ->firstOrFail();
+        $token = $this->adminTokens($request->user())
+            ->firstWhere('id', $tokenId);
+
+        abort_if(! $token, 404);
 
         $token->delete();
 
@@ -136,10 +136,16 @@ class AuthController extends Controller
         ]);
     }
 
-    protected function adminTokenQuery(?User $user)
+    protected function adminTokens(?User $user)
     {
-        return $user?->tokens()->where('name', 'like', self::ADMIN_TOKEN_PREFIX.'%')
-            ?? PersonalAccessToken::query()->whereRaw('1 = 0');
+        if (! $user) {
+            return collect();
+        }
+
+        return $user->tokens()
+            ->get()
+            ->filter(fn (PersonalAccessToken $token) => $token->can('admin'))
+            ->values();
     }
 
     protected function adminTokenName(string $deviceName): string

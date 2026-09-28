@@ -108,7 +108,7 @@ class RefundsController extends Controller
 
         $refundedAmount = (float) $payment->refunds()
             ->when($existingRefund, fn ($query) => $query->whereKeyNot($existingRefund->id))
-            ->whereIn('status', [RefundStatus::Approved, RefundStatus::Processed, RefundStatus::Pending])
+            ->where('status', RefundStatus::Processed)
             ->sum('amount');
 
         if ($refundAmount <= 0 || ($refundedAmount + $refundAmount) > (float) $payment->amount) {

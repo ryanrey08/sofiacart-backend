@@ -16,7 +16,7 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Artisan::command('admin:provision-super-admin {email} {name} {--phone=} {--force}', function (): void {
-    $this->call(AdminAuthorizationSeeder::class);
+    $this->call('db:seed', ['--class' => AdminAuthorizationSeeder::class]);
 
     $existingSuperAdmin = User::query()
         ->where('role', UserRole::Admin)
