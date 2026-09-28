@@ -43,7 +43,7 @@ class AuthController extends Controller
         $token = $user->createToken(
             $validated['device_name'] ?? 'admin-api-token',
             ['admin'],
-            now()->addMinutes((int) env('ADMIN_TOKEN_TTL_MINUTES', 120)),
+            now()->addMinutes((int) config('admin.auth.token_ttl_minutes', 120)),
         )->plainTextToken;
 
         $user->forceFill(['last_login_at' => now()])->save();

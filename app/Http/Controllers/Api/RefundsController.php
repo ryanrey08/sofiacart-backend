@@ -130,6 +130,14 @@ class RefundsController extends Controller
             if ($order) {
                 $order->update(['payment_status' => OrderPaymentStatus::Refunded]);
             }
+
+            return;
+        }
+
+        $payment->update(['status' => PaymentStatus::Completed]);
+
+        if ($order) {
+            $order->update(['payment_status' => OrderPaymentStatus::Paid]);
         }
     }
 }

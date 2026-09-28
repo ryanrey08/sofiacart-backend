@@ -39,8 +39,8 @@
 
 ## Tests executed and results
 
-- `php artisan test tests/Feature/Admin/AdminBackendTest.php` ✅ passed (`11` tests, `57` assertions)
-- `php artisan test` ✅ passed (`19` tests, `99` assertions)
+- `php artisan test tests/Feature/Admin/AdminBackendTest.php` ✅ passed
+- `php artisan test` ✅ passed
 
 ## Blockers
 

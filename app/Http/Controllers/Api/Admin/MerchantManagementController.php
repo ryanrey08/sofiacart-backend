@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdateMerchantStatusRequest;
+use App\Http\Resources\Admin\AdminAuditLogResource;
 use App\Http\Resources\Admin\AdminMerchantResource;
 use App\Models\AdminAuditLog;
 use App\Models\Merchant;
@@ -71,15 +72,15 @@ class MerchantManagementController extends Controller
 
     public function onboardingHistory(Request $request, Merchant $merchant)
     {
-        $logs = AdminAuditLog::query()
-            ->with('actor')
-            ->where('subject_type', $merchant->getMorphClass())
-            ->where('subject_id', $merchant->id)
-            ->where('action', 'like', 'admin.merchants.%')
-            ->latest('created_at')
-            ->paginate((int) $request->integer('per_page', 15));
-
-        return response()->json($logs);
+        return AdminAuditLogResource::collection(
+            AdminAuditLog::query()
+                ->with('actor')
+                ->where('subject_type', $merchant->getMorphClass())
+                ->where('subject_id', $merchant->id)
+                ->where('action', 'like', 'admin.merchants.%')
+                ->latest('created_at')
+                ->paginate((int) $request->integer('per_page', 15))
+        );
     }
 
     public function billing(Merchant $merchant): JsonResponse

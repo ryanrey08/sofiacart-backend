@@ -14,6 +14,7 @@ use App\Models\AdminRole;
 use App\Models\Merchant;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\Refund;
 use App\Models\User;
 use Database\Seeders\AdminAuthorizationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -219,6 +220,51 @@ class AdminBackendTest extends TestCase
             'status' => RefundStatus::Pending->value,
         ])->assertStatus(422)
             ->assertJsonValidationErrors('amount');
+    }
+
+    public function test_reducing_a_processed_refund_restores_payment_and_order_statuses(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $merchant = Merchant::factory()->create();
+        $order = Order::factory()->create([
+            'merchant_id' => $merchant->id,
+            'status' => OrderStatus::Completed,
+            'payment_status' => OrderPaymentStatus::Refunded,
+            'total_amount' => 100,
+        ]);
+        $payment = Payment::create([
+            'merchant_id' => $merchant->id,
+            'order_id' => $order->id,
+            'reference' => 'PAY-REFUND-RESTORE-001',
+            'gateway' => 'gcash',
+            'status' => PaymentStatus::Refunded,
+            'amount' => 100,
+        ]);
+
+        $refund = Refund::create([
+            'merchant_id' => $merchant->id,
+            'payment_id' => $payment->id,
+            'order_id' => $order->id,
+            'reference' => 'REF-RESTORE-001',
+            'amount' => 100,
+            'status' => RefundStatus::Processed,
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->patchJson("/api/admin/refunds/{$refund->id}", [
+            'amount' => 50,
+        ])->assertOk()
+            ->assertJsonPath('data.amount', '50.00');
+
+        $this->assertDatabaseHas('payments', [
+            'id' => $payment->id,
+            'status' => PaymentStatus::Completed->value,
+        ]);
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->id,
+            'payment_status' => OrderPaymentStatus::Paid->value,
+        ]);
     }
 
     public function test_orders_cannot_skip_required_status_transitions(): void
