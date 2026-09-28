@@ -142,7 +142,10 @@ Supported report query params include `date_from`, `date_to`, `limit`, and `low_
 - `POST /api/admin/auth/forgot-password`
 - `POST /api/admin/auth/reset-password`
 - `POST /api/admin/auth/logout`
+- `POST /api/admin/auth/logout-all`
 - `GET /api/admin/auth/me`
+- `GET /api/admin/auth/sessions`
+- `DELETE /api/admin/auth/sessions/{tokenId}`
 
 Admin access reuses the main `users` table plus Sanctum, but all admin routes also require the `admin` middleware and database-backed permissions. Seeded system roles:
 
@@ -196,6 +199,7 @@ New admin management endpoints:
 Completed:
 
 - Isolated admin auth endpoints with rate limiting, token expiry, logout, current-admin, forgot/reset password, and audit logging.
+- Admin session revocation endpoints for all sessions and individual issued tokens.
 - Database-backed RBAC tables, seeded system roles/permissions, admin settings storage, and append-only admin audit logs.
 - Merchant approval/status management, dashboard metrics, admin user/role/permission/settings/log APIs, and admin-only wrappers for core commerce controllers.
 - Last-active-Super-Admin protection, direct-permission/role assignment guards, and one-time Super Admin provisioning command.

@@ -71,11 +71,67 @@ class AuthController extends Controller
         ]);
     }
 
+    public function logoutAll(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $deleted = $user?->tokens()->delete() ?? 0;
+
+        if ($user) {
+            $this->auditLogger->log('admin.auth.logout_all', $user, $user, $request, 'All admin sessions revoked.', [
+                'revoked_tokens' => $deleted,
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'All admin sessions revoked successfully.',
+        ]);
+    }
+
     public function me(Request $request): AdminUserResource
     {
         return AdminUserResource::make(
             $request->user()->loadMissing(['adminRoles.permissions', 'adminPermissions'])
         );
+    }
+
+    public function sessions(Request $request): JsonResponse
+    {
+        $currentTokenId = $request->user()?->currentAccessToken()?->getKey();
+
+        return response()->json([
+            'data' => $request->user()
+                ->tokens()
+                ->latest()
+                ->get()
+                ->map(fn ($token): array => [
+                    'id' => $token->id,
+                    'name' => $token->name,
+                    'abilities' => $token->abilities,
+                    'last_used_at' => $token->last_used_at?->toISOString(),
+                    'created_at' => $token->created_at?->toISOString(),
+                    'expires_at' => $token->expires_at?->toISOString(),
+                    'is_current' => $token->id === $currentTokenId,
+                ])
+                ->values(),
+        ]);
+    }
+
+    public function revokeSession(Request $request, int $tokenId): JsonResponse
+    {
+        $token = $request->user()
+            ->tokens()
+            ->whereKey($tokenId)
+            ->firstOrFail();
+
+        $token->delete();
+
+        $this->auditLogger->log('admin.auth.revoke_session', $request->user(), $request->user(), $request, 'Admin session revoked.', [
+            'revoked_token_id' => $tokenId,
+        ]);
+
+        return response()->json([
+            'message' => 'Admin session revoked successfully.',
+        ]);
     }
 
     public function forgotPassword(Request $request): JsonResponse

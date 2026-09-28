@@ -115,6 +115,62 @@ class AdminBackendTest extends TestCase
             ->assertJsonValidationErrors('user');
     }
 
+    public function test_admin_can_list_and_revoke_sessions(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $firstToken = $admin->createToken('first-device', ['admin'])->accessToken;
+        $secondToken = $admin->createToken('second-device', ['admin'])->accessToken;
+
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
+
+        $this->getJson('/api/admin/auth/sessions')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonFragment(['name' => 'first-device'])
+            ->assertJsonFragment(['name' => 'second-device']);
+
+        $this->deleteJson("/api/admin/auth/sessions/{$firstToken->id}")
+            ->assertOk()
+            ->assertJsonPath('message', 'Admin session revoked successfully.');
+
+        $this->assertDatabaseMissing('personal_access_tokens', ['id' => $firstToken->id]);
+        $this->assertDatabaseHas('personal_access_tokens', ['id' => $secondToken->id]);
+    }
+
+    public function test_admin_can_revoke_all_sessions(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $admin->createToken('first-device', ['admin']);
+        $admin->createToken('second-device', ['admin']);
+
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
+
+        $this->postJson('/api/admin/auth/logout-all')
+            ->assertOk()
+            ->assertJsonPath('message', 'All admin sessions revoked successfully.');
+
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_deactivating_admin_revokes_their_tokens(): void
+    {
+        $superAdmin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $otherSuperAdmin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $otherSuperAdmin->createToken('target-device', ['admin']);
+
+        Sanctum::actingAs($superAdmin);
+
+        $this->patchJson("/api/admin/users/{$otherSuperAdmin->id}", [
+            'is_active' => false,
+        ])->assertOk()
+            ->assertJsonPath('data.is_active', false);
+
+        $this->assertDatabaseMissing('personal_access_tokens', [
+            'tokenable_id' => $otherSuperAdmin->id,
+            'tokenable_type' => User::class,
+        ]);
+    }
+
     public function test_admin_can_update_merchant_status_and_review_audit_history(): void
     {
         $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
@@ -179,6 +235,24 @@ class AdminBackendTest extends TestCase
             'status' => OrderStatus::Completed->value,
         ])->assertStatus(422)
             ->assertJsonValidationErrors('status');
+    }
+
+    public function test_system_roles_and_permissions_cannot_be_modified(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $systemRole = AdminRole::where('slug', AdminRoleRegistry::ADMIN)->firstOrFail();
+        $systemPermission = AdminPermission::where('name', AdminPermissionRegistry::DASHBOARD_VIEW)->firstOrFail();
+
+        Sanctum::actingAs($admin);
+
+        $this->patchJson("/api/admin/roles/{$systemRole->id}", [
+            'name' => 'Changed',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('role');
+
+        $this->deleteJson("/api/admin/permissions/{$systemPermission->id}")
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('permission');
     }
 
     protected function createAdminWithRole(string $roleSlug): User

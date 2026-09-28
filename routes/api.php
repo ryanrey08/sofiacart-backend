@@ -39,7 +39,10 @@ Route::prefix('admin/auth')->group(function (): void {
 
     Route::middleware(['auth:sanctum', 'admin'])->group(function (): void {
         Route::post('/logout', [AdminAuthController::class, 'logout']);
+        Route::post('/logout-all', [AdminAuthController::class, 'logoutAll']);
         Route::get('/me', [AdminAuthController::class, 'me']);
+        Route::get('/sessions', [AdminAuthController::class, 'sessions']);
+        Route::delete('/sessions/{tokenId}', [AdminAuthController::class, 'revokeSession']);
     });
 });
 
