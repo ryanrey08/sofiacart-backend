@@ -243,6 +243,40 @@ class AdminBackendTest extends TestCase
             ->assertJsonPath('data.0.action', 'admin.merchants.status');
     }
 
+    public function test_dashboard_validates_date_filters(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
+
+        $this->getJson('/api/admin/dashboard?date_from=not-a-date')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('date_from');
+
+        $this->getJson('/api/admin/dashboard?date_from=2026-01-02&date_to=2026-01-01')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('date_to');
+    }
+
+    public function test_platform_reports_validate_query_parameters(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
+
+        $this->getJson('/api/admin/reports/platform?type=unknown')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('type');
+
+        $this->getJson('/api/admin/reports/platform?per_page=0')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('per_page');
+
+        $this->get('/api/admin/reports/export?type=unknown')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('type');
+    }
+
     public function test_refunds_cannot_exceed_remaining_payment_balance(): void
     {
         $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);

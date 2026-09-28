@@ -3,19 +3,19 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\DashboardRequest;
 use App\Models\Customer;
 use App\Models\Merchant;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request): JsonResponse
+    public function __invoke(DashboardRequest $request): JsonResponse
     {
         $dateFrom = $request->filled('date_from')
             ? Carbon::parse((string) $request->input('date_from'))->startOfDay()

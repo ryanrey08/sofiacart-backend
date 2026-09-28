@@ -3,17 +3,17 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\PlatformReportRequest;
 use App\Models\Merchant;
 use App\Models\Order;
 use App\Models\Payment;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PlatformReportsController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(PlatformReportRequest $request): JsonResponse
     {
         $type = $request->string('type')->toString() ?: 'merchant_sales';
         $perPage = (int) $request->integer('per_page', 15);
@@ -36,7 +36,7 @@ class PlatformReportsController extends Controller
         ]);
     }
 
-    public function export(Request $request): StreamedResponse
+    public function export(PlatformReportRequest $request): StreamedResponse
     {
         $type = $request->string('type')->toString() ?: 'merchant_sales';
         $rows = match ($type) {
