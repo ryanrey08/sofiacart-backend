@@ -26,7 +26,7 @@ class SettingController extends Controller
                     [
                         'value' => $setting['value'] ?? null,
                         'description' => $setting['description'] ?? null,
-                        'is_secret' => $existing?->is_secret ?? ($setting['is_secret'] ?? false),
+                        'is_secret' => $existing?->is_secret ?? false,
                     ],
                 );
             }

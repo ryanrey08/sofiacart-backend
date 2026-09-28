@@ -59,8 +59,10 @@ class DashboardController extends Controller
                         ->orderBy('status')
                         ->get(),
                     'top_merchants' => Merchant::query()
-                        ->leftJoin('orders', 'orders.merchant_id', '=', 'merchants.id')
-                        ->whereBetween('orders.ordered_at', [$dateFrom, $dateTo])
+                        ->leftJoin('orders', function ($join) use ($dateFrom, $dateTo): void {
+                            $join->on('orders.merchant_id', '=', 'merchants.id')
+                                ->whereBetween('orders.ordered_at', [$dateFrom, $dateTo]);
+                        })
                         ->select('merchants.id', 'merchants.store_name', DB::raw('SUM(orders.total_amount) as total_sales'))
                         ->groupBy('merchants.id', 'merchants.store_name')
                         ->orderByDesc('total_sales')

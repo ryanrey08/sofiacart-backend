@@ -167,6 +167,43 @@ class AdminBackendTest extends TestCase
         $this->assertDatabaseHas('personal_access_tokens', ['name' => 'storefront-device']);
     }
 
+    public function test_admin_can_revoke_the_current_session(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $token = $admin->createToken('admin:current-device', ['admin']);
+        $tokenModel = $token->accessToken;
+
+        $this->withToken($token->plainTextToken)
+            ->deleteJson("/api/admin/auth/sessions/{$tokenModel->id}")
+            ->assertOk()
+            ->assertJsonPath('message', 'Admin session revoked successfully.');
+
+        $this->assertDatabaseMissing('personal_access_tokens', ['id' => $tokenModel->id]);
+        app('auth')->forgetGuards();
+
+        $this->withToken($token->plainTextToken)
+            ->getJson('/api/admin/dashboard')
+            ->assertUnauthorized();
+    }
+
+    public function test_logout_all_revokes_the_current_authenticated_session(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $token = $admin->createToken('admin:current-device', ['admin']);
+        $admin->createToken('admin:second-device', ['admin']);
+
+        $this->withToken($token->plainTextToken)
+            ->postJson('/api/admin/auth/logout-all')
+            ->assertOk()
+            ->assertJsonPath('message', 'All admin sessions revoked successfully.');
+
+        app('auth')->forgetGuards();
+
+        $this->withToken($token->plainTextToken)
+            ->getJson('/api/admin/dashboard')
+            ->assertUnauthorized();
+    }
+
     public function test_deactivating_admin_revokes_their_tokens(): void
     {
         $superAdmin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);

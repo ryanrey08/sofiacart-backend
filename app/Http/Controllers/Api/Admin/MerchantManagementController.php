@@ -98,7 +98,7 @@ class MerchantManagementController extends Controller
                 'refunds_total' => number_format($refundsTotal, 2, '.', ''),
                 'net_total' => number_format($paymentsTotal - $refundsTotal, 2, '.', ''),
                 'payments_count' => $merchant->payments->count(),
-                'refunds_count' => $merchant->refunds->count(),
+                'refunds_count' => $merchant->payments->flatMap->refunds->count(),
                 'transactions_count' => $merchant->transactions->count(),
                 'recent_payments' => $merchant->payments->sortByDesc('created_at')->take(10)->values(),
             ],
