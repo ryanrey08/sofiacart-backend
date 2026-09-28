@@ -15,7 +15,7 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Artisan::command('admin:provision-super-admin {email} {name} {--phone=} {--force}', function (): void {
+Artisan::command('admin:provision-super-admin {email} {name} {--phone=} {--force} {--show-token}', function (): void {
     $this->call('db:seed', ['--class' => AdminAuthorizationSeeder::class]);
 
     $existingSuperAdmin = User::query()
@@ -58,6 +58,12 @@ Artisan::command('admin:provision-super-admin {email} {name} {--phone=} {--force
 
     $this->info('Super Admin provisioned successfully.');
     $this->line('Email: '.$user->email);
-    $this->line('Password setup token: '.$token);
+
+    if ($this->option('show-token')) {
+        $this->warn('Password setup token (handle securely, one-time display): '.$token);
+    } else {
+        $this->line('A password setup token was generated but not displayed. Re-run with --show-token only in a secure terminal if you must capture it manually.');
+    }
+
     $this->line('Reset via POST /api/admin/auth/reset-password with email, token, password, and password_confirmation.');
 })->purpose('Provision a Super Admin without seeding a permanent password');

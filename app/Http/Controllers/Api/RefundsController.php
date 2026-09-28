@@ -134,6 +134,16 @@ class RefundsController extends Controller
             return;
         }
 
+        if ($refundedAmount > 0) {
+            $payment->update(['status' => PaymentStatus::PartiallyRefunded]);
+
+            if ($order) {
+                $order->update(['payment_status' => OrderPaymentStatus::PartiallyRefunded]);
+            }
+
+            return;
+        }
+
         $payment->update(['status' => PaymentStatus::Completed]);
 
         if ($order) {

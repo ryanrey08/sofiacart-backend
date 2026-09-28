@@ -33,7 +33,13 @@ trait InteractsWithMerchantScope
     protected function merchantIdForWrite(Request $request, ?int $requestedMerchantId = null): int
     {
         if ($this->isAdmin($request)) {
-            return $requestedMerchantId ?: $this->requiredMerchantId($request);
+            if ($requestedMerchantId) {
+                return $requestedMerchantId;
+            }
+
+            throw ValidationException::withMessages([
+                'merchant_id' => ['A merchant_id is required for admin write operations.'],
+            ]);
         }
 
         return $this->requiredMerchantId($request);

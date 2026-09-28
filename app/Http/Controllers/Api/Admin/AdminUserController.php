@@ -96,6 +96,9 @@ class AdminUserController extends Controller
         $this->ensureAdminUser($user);
         $validated = $request->validated();
         $actor = $request->user();
+        $changesAdminCapability = array_key_exists('is_active', $validated)
+            || array_key_exists('role_ids', $validated)
+            || array_key_exists('permission_ids', $validated);
 
         $roles = array_key_exists('role_ids', $validated)
             ? $this->authorizationService->ensureAssignableRoles($actor, $validated['role_ids'], $user)
@@ -106,7 +109,7 @@ class AdminUserController extends Controller
 
         $this->authorizationService->protectLastSuperAdmin($user, $roles, $validated['is_active'] ?? null);
 
-        DB::transaction(function () use ($validated, $user, $roles, $permissions): void {
+        DB::transaction(function () use ($validated, $user, $roles, $permissions, $changesAdminCapability): void {
             $user->update(collect($validated)
                 ->except(['role_ids', 'permission_ids', 'role'])
                 ->all());
@@ -121,9 +124,9 @@ class AdminUserController extends Controller
 
             $user->load('adminRoles.permissions', 'adminPermissions');
 
-            if (! $user->isActiveAdmin()
+            if ($changesAdminCapability && (! $user->isActiveAdmin()
                 || ($roles !== null && $user->adminRoles->isEmpty())
-                || $user->allAdminPermissions()->isEmpty()) {
+                || $user->allAdminPermissions()->isEmpty())) {
                 $user->tokens()->delete();
             }
         });

@@ -310,11 +310,11 @@ class AdminBackendTest extends TestCase
 
         $this->assertDatabaseHas('payments', [
             'id' => $payment->id,
-            'status' => PaymentStatus::Completed->value,
+            'status' => PaymentStatus::PartiallyRefunded->value,
         ]);
         $this->assertDatabaseHas('orders', [
             'id' => $order->id,
-            'payment_status' => OrderPaymentStatus::Paid->value,
+            'payment_status' => OrderPaymentStatus::PartiallyRefunded->value,
         ]);
     }
 
