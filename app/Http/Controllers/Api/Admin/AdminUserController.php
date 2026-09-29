@@ -14,6 +14,7 @@ use App\Services\AdminAuthorizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -73,14 +74,20 @@ class AdminUserController extends Controller
             return $user;
         });
 
-        $token = Password::broker('users')->createToken($user);
+        try {
+            Password::broker('users')->sendResetLink(['email' => $user->email]);
+        } catch (\Throwable $exception) {
+            Log::warning('Admin user password setup email delivery failed.', [
+                'email' => $user->email,
+                'exception' => $exception->getMessage(),
+            ]);
+        }
 
         return response()->json([
             'message' => 'Admin user created successfully.',
             'data' => AdminUserResource::make($user->load(['adminRoles.permissions', 'adminPermissions'])),
             'password_setup' => [
                 'email' => $user->email,
-                'token' => $token,
                 'expires_in_minutes' => config('auth.passwords.users.expire'),
             ],
         ], 201);
@@ -109,9 +116,11 @@ class AdminUserController extends Controller
             ? $this->authorizationService->ensureAssignablePermissions($actor, $validated['permission_ids'], $user)
             : null;
 
-        $this->authorizationService->protectLastSuperAdmin($user, $roles, $validated['is_active'] ?? null);
+        $updatedUser = DB::transaction(function () use ($validated, $user, $roles, $permissions, $changesAdminCapability): User {
+            $user = User::query()->lockForUpdate()->findOrFail($user->id);
+            $this->ensureAdminUser($user);
+            $this->authorizationService->protectLastSuperAdmin($user, $roles, $validated['is_active'] ?? null);
 
-        DB::transaction(function () use ($validated, $user, $roles, $permissions, $changesAdminCapability): void {
             $user->update(collect($validated)
                 ->except(['role_ids', 'permission_ids', 'role'])
                 ->all());
@@ -131,9 +140,11 @@ class AdminUserController extends Controller
                 || $user->allAdminPermissions()->isEmpty())) {
                 $user->tokens()->delete();
             }
+
+            return $user;
         });
 
-        return AdminUserResource::make($user->fresh()->load(['adminRoles.permissions', 'adminPermissions']));
+        return AdminUserResource::make($updatedUser->fresh()->load(['adminRoles.permissions', 'adminPermissions']));
     }
 
     public function destroy(Request $request, User $user)
@@ -146,9 +157,11 @@ class AdminUserController extends Controller
             ]);
         }
 
-        $this->authorizationService->protectLastSuperAdmin($user, collect(), false);
-
         DB::transaction(function () use ($user): void {
+            $user = User::query()->lockForUpdate()->findOrFail($user->id);
+            $this->ensureAdminUser($user);
+            $this->authorizationService->protectLastSuperAdmin($user, collect(), false);
+
             $user->tokens()->delete();
             $user->delete();
         });

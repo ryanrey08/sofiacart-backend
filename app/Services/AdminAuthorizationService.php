@@ -34,7 +34,15 @@ class AdminAuthorizationService
             ]);
         }
 
+        $actorPermissions = $actor->allAdminPermissions()->pluck('name');
+
         foreach ($roles as $role) {
+            if ($role->permissions->pluck('name')->diff($actorPermissions)->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'roles' => ['You cannot assign a role with permissions you do not hold.'],
+                ]);
+            }
+
             if ($role->slug === AdminRoleRegistry::SUPER_ADMIN
                 && ! $actor->hasAdminPermission(AdminPermissionRegistry::USERS_ASSIGN_SUPER_ADMIN)) {
                 throw ValidationException::withMessages([
@@ -90,10 +98,10 @@ class AdminAuthorizationService
             ->where('role', $target->role->value)
             ->where('is_active', true)
             ->whereHas('adminRoles', fn ($query) => $query->where('slug', AdminRoleRegistry::SUPER_ADMIN))
-            ->whereKeyNot($target->id)
-            ->count();
+            ->lockForUpdate()
+            ->get();
 
-        if ($activeSuperAdmins === 0) {
+        if ($activeSuperAdmins->where('id', '!=', $target->id)->isEmpty()) {
             throw ValidationException::withMessages([
                 'user' => ['You cannot remove, demote, or deactivate the last active Super Admin.'],
             ]);

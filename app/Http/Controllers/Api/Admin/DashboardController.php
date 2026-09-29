@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Enums\PaymentStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\DashboardRequest;
 use App\Models\Customer;
@@ -25,7 +26,13 @@ class DashboardController extends Controller
             : now()->endOfDay();
 
         $orders = Order::query()->whereBetween('ordered_at', [$dateFrom, $dateTo]);
-        $payments = Payment::query()->whereBetween('created_at', [$dateFrom, $dateTo]);
+        $payments = Payment::query()
+            ->whereBetween('created_at', [$dateFrom, $dateTo])
+            ->whereIn('status', [
+                PaymentStatus::Completed->value,
+                PaymentStatus::PartiallyRefunded->value,
+                PaymentStatus::Refunded->value,
+            ]);
         $merchants = Merchant::query()->whereBetween('created_at', [$dateFrom, $dateTo]);
         $customers = Customer::query()->whereBetween('created_at', [$dateFrom, $dateTo]);
         $products = Product::query()->whereBetween('created_at', [$dateFrom, $dateTo]);

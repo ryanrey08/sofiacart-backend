@@ -25,7 +25,9 @@ class MerchantManagementController extends Controller
         $query = Merchant::query()
             ->with('user')
             ->withCount(['orders', 'products'])
-            ->withSum('payments', 'amount');
+            ->withSum([
+                'payments' => fn ($payments) => $payments->whereIn('status', $this->collectedPaymentStatuses()),
+            ], 'amount');
 
         if ($status = $request->string('status')->toString()) {
             $query->where('status', $status);
@@ -49,7 +51,11 @@ class MerchantManagementController extends Controller
     public function show(Merchant $merchant): AdminMerchantResource
     {
         return AdminMerchantResource::make(
-            $merchant->load(['user'])->loadCount(['orders', 'products'])->loadSum('payments', 'amount')
+            $merchant->load(['user'])
+                ->loadCount(['orders', 'products'])
+                ->loadSum([
+                    'payments' => fn ($payments) => $payments->whereIn('status', $this->collectedPaymentStatuses()),
+                ], 'amount')
         );
     }
 
@@ -87,13 +93,8 @@ class MerchantManagementController extends Controller
 
     public function billing(Merchant $merchant): JsonResponse
     {
-        $collectedStatuses = [
-            PaymentStatus::Completed->value,
-            PaymentStatus::PartiallyRefunded->value,
-            PaymentStatus::Refunded->value,
-        ];
         $paymentsTotal = (float) $merchant->payments()
-            ->whereIn('status', $collectedStatuses)
+            ->whereIn('status', $this->collectedPaymentStatuses())
             ->sum('amount');
         $refundsTotal = (float) $merchant->refunds()
             ->where('status', RefundStatus::Processed)
@@ -107,7 +108,7 @@ class MerchantManagementController extends Controller
                 'refunds_total' => number_format($refundsTotal, 2, '.', ''),
                 'net_total' => number_format($paymentsTotal - $refundsTotal, 2, '.', ''),
                 'payments_count' => $merchant->payments()
-                    ->whereIn('status', $collectedStatuses)
+                    ->whereIn('status', $this->collectedPaymentStatuses())
                     ->count(),
                 'refunds_count' => $merchant->refunds()
                     ->where('status', RefundStatus::Processed)
@@ -120,5 +121,14 @@ class MerchantManagementController extends Controller
                     ->get(),
             ],
         ]);
+    }
+
+    protected function collectedPaymentStatuses(): array
+    {
+        return [
+            PaymentStatus::Completed->value,
+            PaymentStatus::PartiallyRefunded->value,
+            PaymentStatus::Refunded->value,
+        ];
     }
 }

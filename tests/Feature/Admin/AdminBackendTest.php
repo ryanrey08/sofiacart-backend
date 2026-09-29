@@ -19,8 +19,10 @@ use App\Models\Payment;
 use App\Models\Refund;
 use App\Models\User;
 use Database\Seeders\AdminAuthorizationSeeder;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Notification;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -69,14 +71,15 @@ class AdminBackendTest extends TestCase
             ->assertJsonPath('message', 'An admin-scoped API token is required.');
     }
 
-    public function test_super_admin_can_create_admin_user_and_receive_password_setup_token(): void
+    public function test_super_admin_can_create_admin_user_and_email_a_password_setup_link(): void
     {
+        Notification::fake();
         $actor = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
         $role = AdminRole::where('slug', AdminRoleRegistry::ADMIN)->firstOrFail();
 
         Sanctum::actingAs($actor, ['admin'], 'sanctum');
 
-        $this->postJson('/api/admin/users', [
+        $response = $this->postJson('/api/admin/users', [
             'name' => 'Ops Admin',
             'email' => 'ops-admin@example.com',
             'phone' => '09171234567',
@@ -85,7 +88,11 @@ class AdminBackendTest extends TestCase
             ->assertJsonPath('data.email', 'ops-admin@example.com')
             ->assertJsonPath('data.role', 'admin')
             ->assertJsonPath('data.admin_roles.0.slug', AdminRoleRegistry::ADMIN)
-            ->assertJsonStructure(['password_setup' => ['email', 'token', 'expires_in_minutes']]);
+            ->assertJsonStructure(['password_setup' => ['email', 'expires_in_minutes']]);
+
+        $this->assertArrayNotHasKey('token', $response->json('password_setup'));
+        $newAdmin = User::query()->where('email', 'ops-admin@example.com')->firstOrFail();
+        Notification::assertSentTo($newAdmin, ResetPassword::class);
 
         $this->assertDatabaseHas('users', [
             'email' => 'ops-admin@example.com',
@@ -425,6 +432,15 @@ class AdminBackendTest extends TestCase
             ->assertJsonPath('data.refunds_total', '10.00')
             ->assertJsonPath('data.refunds_count', 1)
             ->assertJsonPath('data.net_total', '90.00');
+
+        $dashboard = $this->getJson('/api/admin/dashboard')->assertOk();
+        $this->assertEquals(100, (float) $dashboard->json('data.metrics.payments_collected'));
+
+        $merchantList = $this->getJson('/api/admin/merchants')->assertOk();
+        $this->assertEquals(100, (float) $merchantList->json('data.0.payments_sum_amount'));
+
+        $merchantDetails = $this->getJson("/api/admin/merchants/{$merchant->id}")->assertOk();
+        $this->assertEquals(100, (float) $merchantDetails->json('data.payments_sum_amount'));
     }
 
     public function test_reducing_a_processed_refund_restores_payment_and_order_statuses(): void
@@ -547,6 +563,40 @@ class AdminBackendTest extends TestCase
             'name' => 'Role Operator',
             'email' => 'role-operator@example.test',
             'role_ids' => [$usersOnlyRole->id],
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('roles');
+    }
+
+    public function test_admin_cannot_assign_a_role_with_unheld_permissions(): void
+    {
+        $usersOnlyRole = AdminRole::query()->create([
+            'slug' => 'limited-role-assigner',
+            'name' => 'Limited Role Assigner',
+            'is_system' => false,
+        ]);
+        $usersManage = AdminPermission::query()->firstWhere('name', AdminPermissionRegistry::USERS_MANAGE);
+        $assignRoles = AdminPermission::query()->firstWhere('name', AdminPermissionRegistry::USERS_ASSIGN_ROLES);
+        $usersOnlyRole->permissions()->sync([$usersManage->id]);
+
+        $privilegedRole = AdminRole::query()->create([
+            'slug' => 'permission-escalation',
+            'name' => 'Permission Escalation',
+            'is_system' => false,
+        ]);
+        $permissionsManage = AdminPermission::query()->firstWhere('name', AdminPermissionRegistry::PERMISSIONS_MANAGE);
+        $privilegedRole->permissions()->sync([$permissionsManage->id]);
+
+        $admin = User::factory()->admin()->create([
+            'email' => fake()->unique()->safeEmail(),
+        ]);
+        $admin->adminRoles()->sync([$usersOnlyRole->id]);
+        $admin->adminPermissions()->sync([$assignRoles->id]);
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
+
+        $this->postJson('/api/admin/users', [
+            'name' => 'Escalated Operator',
+            'email' => 'escalated-operator@example.test',
+            'role_ids' => [$privilegedRole->id],
         ])->assertStatus(422)
             ->assertJsonValidationErrors('roles');
     }
