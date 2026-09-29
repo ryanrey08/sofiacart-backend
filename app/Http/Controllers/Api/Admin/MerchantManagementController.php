@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Enums\PaymentStatus;
 use App\Enums\RefundStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdateMerchantStatusRequest;
@@ -86,7 +87,14 @@ class MerchantManagementController extends Controller
 
     public function billing(Merchant $merchant): JsonResponse
     {
-        $paymentsTotal = (float) $merchant->payments()->sum('amount');
+        $collectedStatuses = [
+            PaymentStatus::Completed->value,
+            PaymentStatus::PartiallyRefunded->value,
+            PaymentStatus::Refunded->value,
+        ];
+        $paymentsTotal = (float) $merchant->payments()
+            ->whereIn('status', $collectedStatuses)
+            ->sum('amount');
         $refundsTotal = (float) $merchant->refunds()
             ->where('status', RefundStatus::Processed)
             ->sum('amount');
@@ -98,7 +106,9 @@ class MerchantManagementController extends Controller
                 'payments_total' => number_format($paymentsTotal, 2, '.', ''),
                 'refunds_total' => number_format($refundsTotal, 2, '.', ''),
                 'net_total' => number_format($paymentsTotal - $refundsTotal, 2, '.', ''),
-                'payments_count' => $merchant->payments()->count(),
+                'payments_count' => $merchant->payments()
+                    ->whereIn('status', $collectedStatuses)
+                    ->count(),
                 'refunds_count' => $merchant->refunds()
                     ->where('status', RefundStatus::Processed)
                     ->count(),

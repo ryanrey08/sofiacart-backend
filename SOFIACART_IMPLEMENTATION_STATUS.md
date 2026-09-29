@@ -50,6 +50,7 @@
 - `app/Http/Controllers/Api/ProductsController.php`
 - `app/Http/Controllers/Api/TransactionsController.php`
 - `app/Http/Controllers/Controller.php`
+- `app/Services/AdminAuthorizationService.php`
 - `app/Http/Resources/Admin/AdminAuditLogResource.php`
 - `routes/console.php`
 - `database/migrations/2026_09_28_034500_add_partial_refund_statuses.php`
@@ -87,7 +88,7 @@ The following results came from the previous session, before the current resume 
 - Located the public `ryanrey08/sofiacart-frontend` repository using GitHub access. Its current `main` root listing contains only `.gitignore` and `README.md`; no frontend source tree is available to compare. This workspace cannot clone another repository into the checkout.
 - Applied the backend fixes identified by code review: captured the report type in streamed exports, allowed valid additional partial refunds, preserved omitted setting values/descriptions, made existing-account Super Admin promotion require `--force` and revoke prior tokens, and limited billing refund totals/counts to processed refunds. Added regression coverage and corrected the provisioning README instructions.
 - Follow-up review improvements serialize selected scalar report columns (including enum values), cap audit-log page size, use aggregate billing queries while retaining nested refunds for the ten recent payments, and normalize partial-refund statuses before migration rollback narrows enum values. Added CSV row and page-size regression assertions.
-- Final review fixes serialize refund balance checks under a locked payment row, cap pagination to 1–100 across API list endpoints, and allow user creation without requiring direct-permission management when no direct permissions were requested. Updated refund status assertions and added focused RBAC/pagination test coverage.
+- Final review fixes require `users.assign_roles` for role assignments, stream report rows via a database cursor, count only collected payment statuses in merchant billing, serialize refund balance checks under a locked payment row, cap pagination to 1–100 across API list endpoints, and allow user creation without requiring direct-permission management when none were requested. Updated refund response assertions and added focused RBAC/pagination/billing coverage.
 - `php -l` passed for every modified PHP file, `composer validate --no-check-publish --no-interaction` passed, and `git diff --check` passed. The targeted feature test command could not start because `vendor/autoload.php` is missing; `vendor/bin/pint` is also unavailable because dependencies could not be installed.
 
 ## Exact next steps

@@ -318,7 +318,6 @@ class AdminBackendTest extends TestCase
             'status' => PaymentStatus::Completed,
             'amount' => 100,
         ]);
-
         Sanctum::actingAs($admin, ['admin'], 'sanctum');
 
         $this->postJson('/api/admin/refunds', [
@@ -388,6 +387,20 @@ class AdminBackendTest extends TestCase
             'status' => PaymentStatus::Completed,
             'amount' => 100,
         ]);
+        Payment::create([
+            'merchant_id' => $merchant->id,
+            'reference' => 'PAY-BILLING-PENDING',
+            'gateway' => 'gcash',
+            'status' => PaymentStatus::Pending,
+            'amount' => 30,
+        ]);
+        Payment::create([
+            'merchant_id' => $merchant->id,
+            'reference' => 'PAY-BILLING-FAILED',
+            'gateway' => 'gcash',
+            'status' => PaymentStatus::Failed,
+            'amount' => 5,
+        ]);
         Refund::create([
             'merchant_id' => $merchant->id,
             'payment_id' => $payment->id,
@@ -407,6 +420,8 @@ class AdminBackendTest extends TestCase
 
         $this->getJson("/api/admin/merchants/{$merchant->id}/billing")
             ->assertOk()
+            ->assertJsonPath('data.payments_total', '100.00')
+            ->assertJsonPath('data.payments_count', 1)
             ->assertJsonPath('data.refunds_total', '10.00')
             ->assertJsonPath('data.refunds_count', 1)
             ->assertJsonPath('data.net_total', '90.00');
@@ -527,6 +542,13 @@ class AdminBackendTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('data.email', 'new-operator@example.test')
             ->assertJsonPath('data.admin_permissions', []);
+
+        $this->postJson('/api/admin/users', [
+            'name' => 'Role Operator',
+            'email' => 'role-operator@example.test',
+            'role_ids' => [$usersOnlyRole->id],
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('roles');
     }
 
     public function test_settings_updates_preserve_omitted_values_and_descriptions(): void

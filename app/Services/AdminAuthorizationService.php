@@ -28,6 +28,12 @@ class AdminAuthorizationService
             ]);
         }
 
+        if ($roleIds !== [] && ! $actor->hasAdminPermission(AdminPermissionRegistry::USERS_ASSIGN_ROLES)) {
+            throw ValidationException::withMessages([
+                'roles' => ['You are not allowed to assign admin roles.'],
+            ]);
+        }
+
         foreach ($roles as $role) {
             if ($role->slug === AdminRoleRegistry::SUPER_ADMIN
                 && ! $actor->hasAdminPermission(AdminPermissionRegistry::USERS_ASSIGN_SUPER_ADMIN)) {

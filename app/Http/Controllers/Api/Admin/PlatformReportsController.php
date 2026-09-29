@@ -40,24 +40,18 @@ class PlatformReportsController extends Controller
     public function export(PlatformReportRequest $request): StreamedResponse
     {
         $type = $request->string('type')->toString() ?: 'merchant_sales';
-        $rows = match ($type) {
-            'payment_status' => $this->paymentStatusQuery()->get(),
-            'order_status' => $this->orderStatusQuery()->get(),
-            default => $this->merchantSalesQuery()->get(),
+        $query = match ($type) {
+            'payment_status' => $this->paymentStatusQuery(),
+            'order_status' => $this->orderStatusQuery(),
+            default => $this->merchantSalesQuery(),
         };
         $columns = $this->exportColumns($type);
 
-        return response()->streamDownload(function () use ($rows, $columns): void {
+        return response()->streamDownload(function () use ($query, $columns): void {
             $handle = fopen('php://output', 'w');
             fputcsv($handle, $columns);
 
-            if ($rows->isEmpty()) {
-                fclose($handle);
-
-                return;
-            }
-
-            foreach ($rows as $row) {
+            foreach ($query->cursor() as $row) {
                 fputcsv($handle, array_map(function (string $column) use ($row) {
                     $value = $row->getAttribute($column);
 
