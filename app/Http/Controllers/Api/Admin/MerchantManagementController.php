@@ -86,12 +86,10 @@ class MerchantManagementController extends Controller
 
     public function billing(Merchant $merchant): JsonResponse
     {
-        $merchant->load(['payments.refunds', 'transactions', 'orders']);
-
-        $paymentsTotal = (float) $merchant->payments->sum('amount');
-        $processedRefunds = $merchant->payments->flatMap->refunds
-            ->filter(fn ($refund) => $refund->status === RefundStatus::Processed);
-        $refundsTotal = (float) $processedRefunds->sum('amount');
+        $paymentsTotal = (float) $merchant->payments()->sum('amount');
+        $refundsTotal = (float) $merchant->refunds()
+            ->where('status', RefundStatus::Processed)
+            ->sum('amount');
 
         return response()->json([
             'data' => [
@@ -100,10 +98,16 @@ class MerchantManagementController extends Controller
                 'payments_total' => number_format($paymentsTotal, 2, '.', ''),
                 'refunds_total' => number_format($refundsTotal, 2, '.', ''),
                 'net_total' => number_format($paymentsTotal - $refundsTotal, 2, '.', ''),
-                'payments_count' => $merchant->payments->count(),
-                'refunds_count' => $processedRefunds->count(),
-                'transactions_count' => $merchant->transactions->count(),
-                'recent_payments' => $merchant->payments->sortByDesc('created_at')->take(10)->values(),
+                'payments_count' => $merchant->payments()->count(),
+                'refunds_count' => $merchant->refunds()
+                    ->where('status', RefundStatus::Processed)
+                    ->count(),
+                'transactions_count' => $merchant->transactions()->count(),
+                'recent_payments' => $merchant->payments()
+                    ->with('refunds')
+                    ->latest('created_at')
+                    ->limit(10)
+                    ->get(),
             ],
         ]);
     }

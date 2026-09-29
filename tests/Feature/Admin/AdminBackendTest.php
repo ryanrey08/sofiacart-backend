@@ -281,14 +281,23 @@ class AdminBackendTest extends TestCase
     public function test_platform_report_export_streams_the_selected_report_columns(): void
     {
         $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $merchant = Merchant::factory()->create();
+        Payment::create([
+            'merchant_id' => $merchant->id,
+            'reference' => 'PAY-REPORT-EXPORT-001',
+            'gateway' => 'gcash',
+            'status' => PaymentStatus::Completed,
+            'amount' => 23,
+        ]);
         Sanctum::actingAs($admin, ['admin'], 'sanctum');
 
         $response = $this->get('/api/admin/reports/export?type=payment_status')->assertOk();
+        $rows = array_map('str_getcsv', explode("\n", trim($response->streamedContent())));
 
-        $this->assertStringContainsString(
-            'status,payments_count,total_amount',
-            $response->streamedContent(),
-        );
+        $this->assertSame(['status', 'payments_count', 'total_amount'], $rows[0]);
+        $this->assertSame('completed', $rows[1][0]);
+        $this->assertSame('1', $rows[1][1]);
+        $this->assertEquals(23, (float) $rows[1][2]);
     }
 
     public function test_refunds_cannot_exceed_remaining_payment_balance(): void
@@ -480,6 +489,16 @@ class AdminBackendTest extends TestCase
         $this->deleteJson("/api/admin/permissions/{$systemPermission->id}")
             ->assertStatus(422)
             ->assertJsonValidationErrors('permission');
+    }
+
+    public function test_system_log_page_size_is_capped(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
+
+        $this->getJson('/api/admin/logs?per_page=100000')
+            ->assertOk()
+            ->assertJsonPath('meta.per_page', 100);
     }
 
     public function test_settings_updates_preserve_omitted_values_and_descriptions(): void

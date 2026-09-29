@@ -35,13 +35,21 @@
 - `app/Http/Controllers/Api/Admin/AuthController.php`
 - `app/Http/Controllers/Api/Admin/AdminUserController.php`
 - `app/Http/Controllers/Api/Admin/SettingController.php`
+- `app/Http/Controllers/Api/Admin/MerchantManagementController.php`
+- `app/Http/Controllers/Api/Admin/PlatformReportsController.php`
+- `app/Http/Controllers/Api/Admin/SystemLogController.php`
+- `app/Http/Controllers/Api/RefundsController.php`
 - `app/Http/Resources/Admin/AdminAuditLogResource.php`
+- `routes/console.php`
+- `database/migrations/2026_09_28_034500_add_partial_refund_statuses.php`
 - `routes/api.php`
 - `tests/Feature/Admin/AdminBackendTest.php`
 - `README.md`
 - `SOFIACART_IMPLEMENTATION_STATUS.md`
 
-## Tests executed and results
+## Previously executed tests and results
+
+The following results came from the previous session, before the current resume changes. They do not verify the newly added regression tests or fixes.
 
 - `php artisan test tests/Feature/Admin/AdminBackendTest.php` ✅ passed
 - `php artisan test` ✅ passed
@@ -67,6 +75,7 @@
 - Retried `composer install --no-interaction --prefer-dist --no-progress` against the existing lockfile. It failed with `Could not authenticate against github.com`; Composer diagnostics also reported GitHub API rate-limit HTTP 403. Neither `COMPOSER_AUTH` nor a default Composer auth file is configured in this environment. `composer.json` and `composer.lock` remain unchanged, and `vendor/` was not restored.
 - Located the public `ryanrey08/sofiacart-frontend` repository using GitHub access. Its current `main` root listing contains only `.gitignore` and `README.md`; no frontend source tree is available to compare. This workspace cannot clone another repository into the checkout.
 - Applied the backend fixes identified by code review: captured the report type in streamed exports, allowed valid additional partial refunds, preserved omitted setting values/descriptions, made existing-account Super Admin promotion require `--force` and revoke prior tokens, and limited billing refund totals/counts to processed refunds. Added regression coverage and corrected the provisioning README instructions.
+- Follow-up review improvements serialize selected scalar report columns (including enum values), cap audit-log page size, use aggregate billing queries while retaining nested refunds for the ten recent payments, and normalize partial-refund statuses before migration rollback narrows enum values. Added CSV row and page-size regression assertions.
 - `php -l` passed for every modified PHP file, `composer validate --no-check-publish --no-interaction` passed, and `git diff --check` passed. The targeted feature test command could not start because `vendor/autoload.php` is missing; `vendor/bin/pint` is also unavailable because dependencies could not be installed.
 
 ## Exact next steps
@@ -74,5 +83,5 @@
 1. Configure valid GitHub package-download authentication for Composer in the execution environment (without committing credentials), then run `composer install --no-interaction --prefer-dist` using the existing lockfile.
 2. Once `vendor/` is restored, run `vendor/bin/pint` and `php artisan test tests/Feature/Admin/AdminBackendTest.php`; the new regression tests have not executed yet, so record their actual results and address any failures.
 3. Make the frontend repository's source tree available in the workspace through an authorized checkout/workspace setup. Compare its existing implementation with the verified routes and resource contracts before changing frontend integration.
-4. Re-run any remaining backend validation that is still unverified; the previous `parallel_validation` attempt in the earlier session timed out and should still be treated as unverified.
+4. Re-run `parallel_validation` after the follow-up review fixes and verify its security analysis covers the PHP changes.
 5. Continue expanding admin feature coverage across the remaining controller surface once Laravel test execution is available again.

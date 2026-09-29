@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\PlatformReportRequest;
 use App\Models\Merchant;
 use App\Models\Order;
 use App\Models\Payment;
+use BackedEnum;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -44,10 +45,11 @@ class PlatformReportsController extends Controller
             'order_status' => $this->orderStatusQuery()->get(),
             default => $this->merchantSalesQuery()->get(),
         };
+        $columns = $this->exportColumns($type);
 
-        return response()->streamDownload(function () use ($rows, $type): void {
+        return response()->streamDownload(function () use ($rows, $columns): void {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, $this->exportColumns($type));
+            fputcsv($handle, $columns);
 
             if ($rows->isEmpty()) {
                 fclose($handle);
@@ -56,7 +58,11 @@ class PlatformReportsController extends Controller
             }
 
             foreach ($rows as $row) {
-                fputcsv($handle, (array) $row);
+                fputcsv($handle, array_map(function (string $column) use ($row) {
+                    $value = $row->getAttribute($column);
+
+                    return $value instanceof BackedEnum ? $value->value : $value;
+                }, $columns));
             }
             fclose($handle);
         }, "{$type}.csv", [

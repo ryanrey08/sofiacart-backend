@@ -26,8 +26,10 @@ class SystemLogController extends Controller
             });
         }
 
+        $perPage = min(max((int) $request->integer('per_page', 25), 1), 100);
+
         return AdminAuditLogResource::collection(
-            $query->latest('created_at')->paginate((int) $request->integer('per_page', 25))
+            $query->latest('created_at')->paginate($perPage)
         );
     }
 
