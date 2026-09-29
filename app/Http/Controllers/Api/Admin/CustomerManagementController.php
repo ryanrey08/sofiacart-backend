@@ -27,7 +27,7 @@ class CustomerManagementController extends Controller
         }
 
         return AdminCustomerResource::collection(
-            $query->latest()->paginate((int) $request->integer('per_page', 15))
+            $query->latest()->paginate($this->pageSize($request))
         );
     }
 
@@ -49,7 +49,7 @@ class CustomerManagementController extends Controller
     public function orders(Request $request, Customer $customer)
     {
         return OrderResource::collection(
-            $customer->orders()->with(['customer', 'items'])->latest('ordered_at')->paginate((int) $request->integer('per_page', 15))
+            $customer->orders()->with(['customer', 'items'])->latest('ordered_at')->paginate($this->pageSize($request))
         );
     }
 }

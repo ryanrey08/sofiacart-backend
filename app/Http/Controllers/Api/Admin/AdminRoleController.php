@@ -26,7 +26,7 @@ class AdminRoleController extends Controller
             });
         }
 
-        return AdminRoleResource::collection($query->latest()->paginate((int) $request->integer('per_page', 15)));
+        return AdminRoleResource::collection($query->latest()->paginate($this->pageSize($request)));
     }
 
     public function store(StoreAdminRoleRequest $request): AdminRoleResource

@@ -37,7 +37,7 @@ class ProductsController extends Controller
             $query->where('category_id', $categoryId);
         }
 
-        return ProductResource::collection($query->latest()->paginate((int) $request->integer('per_page', 15)));
+        return ProductResource::collection($query->latest()->paginate($this->pageSize($request)));
     }
 
     public function store(StoreProductRequest $request): ProductResource

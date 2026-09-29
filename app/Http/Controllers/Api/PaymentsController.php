@@ -30,7 +30,7 @@ class PaymentsController extends Controller
             $query->where('reference', 'like', "%{$search}%");
         }
 
-        return PaymentResource::collection($query->latest()->paginate((int) $request->integer('per_page', 15)));
+        return PaymentResource::collection($query->latest()->paginate($this->pageSize($request)));
     }
 
     public function store(StorePaymentRequest $request): PaymentResource

@@ -27,7 +27,9 @@ class AdminPermissionController extends Controller
             });
         }
 
-        return AdminPermissionResource::collection($query->orderBy('group')->orderBy('name')->paginate((int) $request->integer('per_page', 50)));
+        return AdminPermissionResource::collection(
+            $query->orderBy('group')->orderBy('name')->paginate($this->pageSize($request, 50))
+        );
     }
 
     public function store(StoreAdminPermissionRequest $request): AdminPermissionResource

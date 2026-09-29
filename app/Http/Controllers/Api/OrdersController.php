@@ -48,7 +48,7 @@ class OrdersController extends Controller
             $query->whereDate('ordered_at', '<=', $request->date('date_to'));
         }
 
-        return OrderResource::collection($query->latest('ordered_at')->paginate((int) $request->integer('per_page', 15)));
+        return OrderResource::collection($query->latest('ordered_at')->paginate($this->pageSize($request)));
     }
 
     public function store(StoreOrderRequest $request): OrderResource

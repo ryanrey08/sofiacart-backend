@@ -39,7 +39,7 @@ class InventoryController extends Controller
             $query->whereDate('created_at', '<=', $request->date('date_to'));
         }
 
-        return InventoryLogResource::collection($query->latest('created_at')->paginate((int) $request->integer('per_page', 15)));
+        return InventoryLogResource::collection($query->latest('created_at')->paginate($this->pageSize($request)));
     }
 
     public function adjust(AdjustInventoryRequest $request): JsonResponse

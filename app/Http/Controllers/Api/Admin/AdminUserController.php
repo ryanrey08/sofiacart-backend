@@ -42,7 +42,7 @@ class AdminUserController extends Controller
             $query->where('is_active', $request->boolean('is_active'));
         }
 
-        return AdminUserResource::collection($query->latest()->paginate((int) $request->integer('per_page', 15)));
+        return AdminUserResource::collection($query->latest()->paginate($this->pageSize($request)));
     }
 
     public function store(StoreAdminUserRequest $request)
@@ -51,8 +51,10 @@ class AdminUserController extends Controller
         $actor = $request->user();
         $roleIds = $validated['role_ids'] ?? [];
         $permissionIds = $validated['permission_ids'] ?? [];
-        $roles = $this->authorizationService->ensureAssignableRoles($actor, $roleIds);
-        $permissions = $this->authorizationService->ensureAssignablePermissions($actor, $permissionIds);
+        $this->authorizationService->ensureAssignableRoles($actor, $roleIds);
+        if ($permissionIds !== []) {
+            $this->authorizationService->ensureAssignablePermissions($actor, $permissionIds);
+        }
 
         $user = DB::transaction(function () use ($validated, $roleIds, $permissionIds): User {
             $user = User::create([
@@ -169,7 +171,7 @@ class AdminUserController extends Controller
                         });
                 })
                 ->latest('created_at')
-                ->paginate((int) $request->integer('per_page', 15))
+                ->paginate($this->pageSize($request))
         );
     }
 

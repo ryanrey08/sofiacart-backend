@@ -31,7 +31,7 @@ class TransactionsController extends Controller
             $query->where('reference', 'like', "%{$search}%");
         }
 
-        return TransactionResource::collection($query->latest()->paginate((int) $request->integer('per_page', 15)));
+        return TransactionResource::collection($query->latest()->paginate($this->pageSize($request)));
     }
 
     public function store(StoreTransactionRequest $request): TransactionResource

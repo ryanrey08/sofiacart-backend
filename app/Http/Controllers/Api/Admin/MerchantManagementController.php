@@ -41,7 +41,7 @@ class MerchantManagementController extends Controller
         }
 
         return AdminMerchantResource::collection(
-            $query->latest()->paginate((int) $request->integer('per_page', 15))
+            $query->latest()->paginate($this->pageSize($request))
         );
     }
 
@@ -80,7 +80,7 @@ class MerchantManagementController extends Controller
                 ->where('subject_id', $merchant->id)
                 ->where('action', 'like', 'admin.merchants.%')
                 ->latest('created_at')
-                ->paginate((int) $request->integer('per_page', 15))
+                ->paginate($this->pageSize($request))
         );
     }
 

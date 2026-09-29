@@ -36,17 +36,22 @@ class RefundsController extends Controller
             $query->where('reference', 'like', "%{$search}%");
         }
 
-        return RefundResource::collection($query->latest()->paginate((int) $request->integer('per_page', 15)));
+        return RefundResource::collection($query->latest()->paginate($this->pageSize($request)));
     }
 
     public function store(StoreRefundRequest $request): RefundResource
     {
         $data = $request->validated();
         $data['merchant_id'] = $this->merchantIdForWrite($request, $data['merchant_id'] ?? null);
-        [$payment, $order] = $this->ensureRelationsBelongToMerchant($data['merchant_id'], $data['payment_id'], $data['order_id'] ?? null);
-        $this->ensureRefundIsAllowed($payment, $data['amount']);
 
-        $refund = DB::transaction(function () use ($data, $payment, $order): Refund {
+        $refund = DB::transaction(function () use ($data): Refund {
+            [$payment, $order] = $this->ensureRelationsBelongToMerchant(
+                $data['merchant_id'],
+                $data['payment_id'],
+                $data['order_id'] ?? null,
+            );
+            $this->ensureRefundIsAllowed($payment, $data['amount']);
+
             $refund = Refund::create($data);
             $this->syncRefundedBalances($payment, $order);
 
@@ -63,18 +68,26 @@ class RefundsController extends Controller
 
     public function update(UpdateRefundRequest $request, int $refund): RefundResource
     {
-        $model = $this->scopeMerchant(Refund::query(), $request)->findOrFail($refund);
-        $data = $request->validated();
-        $data['merchant_id'] = $this->merchantIdForWrite($request, $data['merchant_id'] ?? $model->merchant_id);
-        [$payment, $order] = $this->ensureRelationsBelongToMerchant($data['merchant_id'], $data['payment_id'] ?? $model->payment_id, $data['order_id'] ?? $model->order_id);
-        $this->ensureRefundIsAllowed($payment, $data['amount'] ?? (float) $model->amount, $model);
+        $updatedRefund = DB::transaction(function () use ($request, $refund): Refund {
+            $model = $this->scopeMerchant(Refund::query(), $request)
+                ->lockForUpdate()
+                ->findOrFail($refund);
+            $data = $request->validated();
+            $data['merchant_id'] = $this->merchantIdForWrite($request, $data['merchant_id'] ?? $model->merchant_id);
+            [$payment, $order] = $this->ensureRelationsBelongToMerchant(
+                $data['merchant_id'],
+                $data['payment_id'] ?? $model->payment_id,
+                $data['order_id'] ?? $model->order_id,
+            );
+            $this->ensureRefundIsAllowed($payment, $data['amount'] ?? (float) $model->amount, $model);
 
-        DB::transaction(function () use ($data, $model, $payment, $order): void {
             $model->update($data);
             $this->syncRefundedBalances($payment, $order);
+
+            return $model->fresh();
         });
 
-        return RefundResource::make($model->fresh());
+        return RefundResource::make($updatedRefund);
     }
 
     public function destroy(Request $request, int $refund)
@@ -86,7 +99,9 @@ class RefundsController extends Controller
 
     protected function ensureRelationsBelongToMerchant(int $merchantId, int $paymentId, ?int $orderId): array
     {
-        $payment = Payment::where('merchant_id', $merchantId)->findOrFail($paymentId);
+        $payment = Payment::where('merchant_id', $merchantId)
+            ->lockForUpdate()
+            ->findOrFail($paymentId);
 
         $order = null;
         if ($orderId) {

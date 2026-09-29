@@ -28,7 +28,7 @@ class CategoryController extends Controller
             });
         }
 
-        return CategoryResource::collection($query->latest()->paginate((int) $request->integer('per_page', 15)));
+        return CategoryResource::collection($query->latest()->paginate($this->pageSize($request)));
     }
 
     public function store(StoreCategoryRequest $request): CategoryResource

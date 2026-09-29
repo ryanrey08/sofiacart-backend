@@ -360,7 +360,7 @@ class AdminBackendTest extends TestCase
             'reference' => 'REF-PARTIAL-001',
             'amount' => 40,
             'status' => RefundStatus::Processed->value,
-        ])->assertOk();
+        ])->assertCreated();
 
         $this->postJson('/api/admin/refunds', [
             'merchant_id' => $merchant->id,
@@ -369,7 +369,7 @@ class AdminBackendTest extends TestCase
             'reference' => 'REF-PARTIAL-002',
             'amount' => 60,
             'status' => RefundStatus::Processed->value,
-        ])->assertOk();
+        ])->assertCreated();
 
         $this->assertDatabaseHas('payments', [
             'id' => $payment->id,
@@ -499,6 +499,34 @@ class AdminBackendTest extends TestCase
         $this->getJson('/api/admin/logs?per_page=100000')
             ->assertOk()
             ->assertJsonPath('meta.per_page', 100);
+
+        $this->getJson('/api/admin/merchants?per_page=100000')
+            ->assertOk()
+            ->assertJsonPath('meta.per_page', 100);
+    }
+
+    public function test_admin_user_can_be_created_without_assigning_direct_permissions(): void
+    {
+        $usersOnlyRole = AdminRole::query()->create([
+            'slug' => 'users-only',
+            'name' => 'Users Only',
+            'is_system' => false,
+        ]);
+        $usersManage = AdminPermission::query()->firstWhere('name', AdminPermissionRegistry::USERS_MANAGE);
+        $usersOnlyRole->permissions()->sync([$usersManage->id]);
+
+        $admin = User::factory()->admin()->create([
+            'email' => fake()->unique()->safeEmail(),
+        ]);
+        $admin->adminRoles()->sync([$usersOnlyRole->id]);
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
+
+        $this->postJson('/api/admin/users', [
+            'name' => 'New Operator',
+            'email' => 'new-operator@example.test',
+        ])->assertCreated()
+            ->assertJsonPath('data.email', 'new-operator@example.test')
+            ->assertJsonPath('data.admin_permissions', []);
     }
 
     public function test_settings_updates_preserve_omitted_values_and_descriptions(): void
