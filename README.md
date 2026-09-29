@@ -75,7 +75,7 @@ Create the initial Super Admin with:
 php artisan admin:provision-super-admin admin@example.com "SofiaCart Super Admin"
 ```
 
-The command prints a one-time password setup token. Complete setup through `POST /api/admin/auth/reset-password`.
+The command hides the one-time password setup token by default. Use `--show-token` only in a secure terminal when you need to capture it manually. Complete setup through `POST /api/admin/auth/reset-password`. Passing `--force` is required when promoting an existing account or provisioning another Super Admin.
 
 ## API overview
 

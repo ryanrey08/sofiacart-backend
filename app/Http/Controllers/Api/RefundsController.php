@@ -100,7 +100,11 @@ class RefundsController extends Controller
 
     protected function ensureRefundIsAllowed(Payment $payment, float $refundAmount, ?Refund $existingRefund = null): void
     {
-        if (! in_array($payment->status, [PaymentStatus::Completed, PaymentStatus::Refunded], true)) {
+        if (! in_array($payment->status, [
+            PaymentStatus::Completed,
+            PaymentStatus::PartiallyRefunded,
+            PaymentStatus::Refunded,
+        ], true)) {
             throw ValidationException::withMessages([
                 'payment_id' => ['Refunds may only be created for completed or previously refunded payments.'],
             ]);

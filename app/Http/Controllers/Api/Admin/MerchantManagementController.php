@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Enums\RefundStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdateMerchantStatusRequest;
 use App\Http\Resources\Admin\AdminAuditLogResource;
@@ -88,7 +89,9 @@ class MerchantManagementController extends Controller
         $merchant->load(['payments.refunds', 'transactions', 'orders']);
 
         $paymentsTotal = (float) $merchant->payments->sum('amount');
-        $refundsTotal = (float) $merchant->payments->flatMap->refunds->sum('amount');
+        $processedRefunds = $merchant->payments->flatMap->refunds
+            ->filter(fn ($refund) => $refund->status === RefundStatus::Processed);
+        $refundsTotal = (float) $processedRefunds->sum('amount');
 
         return response()->json([
             'data' => [
@@ -98,7 +101,7 @@ class MerchantManagementController extends Controller
                 'refunds_total' => number_format($refundsTotal, 2, '.', ''),
                 'net_total' => number_format($paymentsTotal - $refundsTotal, 2, '.', ''),
                 'payments_count' => $merchant->payments->count(),
-                'refunds_count' => $merchant->payments->flatMap->refunds->count(),
+                'refunds_count' => $processedRefunds->count(),
                 'transactions_count' => $merchant->transactions->count(),
                 'recent_payments' => $merchant->payments->sortByDesc('created_at')->take(10)->values(),
             ],

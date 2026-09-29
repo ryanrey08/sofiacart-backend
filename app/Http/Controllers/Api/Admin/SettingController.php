@@ -28,8 +28,10 @@ class SettingController extends Controller
                     [
                         'value' => $hasIncomingValue
                             ? $setting['value']
-                            : ($isSecret ? $existing?->value : null),
-                        'description' => $setting['description'] ?? null,
+                            : $existing?->value,
+                        'description' => array_key_exists('description', $setting)
+                            ? $setting['description']
+                            : $existing?->description,
                         'is_secret' => $isSecret,
                     ],
                 );

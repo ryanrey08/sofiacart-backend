@@ -57,20 +57,22 @@
 - Frontend repository unavailable in the current workspace.
 - Laravel Boost bootstrap is partially blocked by missing `boost:*` Artisan commands after package installation.
 - Laravel dependency restoration is currently blocked in this session because `composer install` could not authenticate against GitHub to download required packages, leaving `vendor/` unavailable for `php artisan` commands.
-- During the current resume attempt, `composer require laravel/boost --dev --no-interaction` also failed because package downloads require GitHub authentication. Its incidental Composer constraint edits were reverted; no application code or dependency declarations were changed.
+- During the earlier resume attempt, `composer require laravel/boost --dev --no-interaction` failed because package downloads require GitHub authentication. That command's incidental Composer edits were reverted; the repository's existing `laravel/boost` declaration remains unchanged.
 
 ## Current resume attempt
 
 - Confirmed the starting working tree was clean and PHP 8.3.6 / Composer 2.10.3 are available.
 - Confirmed the frontend repository is not present under `/home/runner/work`; this workspace contains only `sofiacart-backend`.
-- No backend tests or Pint checks were run in this attempt because `vendor/` is missing. No frontend integration or API contract changes were made.
+- Backend feature tests and Pint could not run because `vendor/` is missing. No frontend integration or API contract changes were made.
 - Retried `composer install --no-interaction --prefer-dist --no-progress` against the existing lockfile. It failed with `Could not authenticate against github.com`; Composer diagnostics also reported GitHub API rate-limit HTTP 403. Neither `COMPOSER_AUTH` nor a default Composer auth file is configured in this environment. `composer.json` and `composer.lock` remain unchanged, and `vendor/` was not restored.
 - Located the public `ryanrey08/sofiacart-frontend` repository using GitHub access. Its current `main` root listing contains only `.gitignore` and `README.md`; no frontend source tree is available to compare. This workspace cannot clone another repository into the checkout.
+- Applied the backend fixes identified by code review: captured the report type in streamed exports, allowed valid additional partial refunds, preserved omitted setting values/descriptions, made existing-account Super Admin promotion require `--force` and revoke prior tokens, and limited billing refund totals/counts to processed refunds. Added regression coverage and corrected the provisioning README instructions.
+- `php -l` passed for every modified PHP file, `composer validate --no-check-publish --no-interaction` passed, and `git diff --check` passed. The targeted feature test command could not start because `vendor/autoload.php` is missing; `vendor/bin/pint` is also unavailable because dependencies could not be installed.
 
 ## Exact next steps
 
 1. Configure valid GitHub package-download authentication for Composer in the execution environment (without committing credentials), then run `composer install --no-interaction --prefer-dist` using the existing lockfile.
-2. Once `vendor/` is restored, run `vendor/bin/pint` and `php artisan test tests/Feature/Admin/AdminBackendTest.php`; record actual results and address any failures.
+2. Once `vendor/` is restored, run `vendor/bin/pint` and `php artisan test tests/Feature/Admin/AdminBackendTest.php`; the new regression tests have not executed yet, so record their actual results and address any failures.
 3. Make the frontend repository's source tree available in the workspace through an authorized checkout/workspace setup. Compare its existing implementation with the verified routes and resource contracts before changing frontend integration.
 4. Re-run any remaining backend validation that is still unverified; the previous `parallel_validation` attempt in the earlier session timed out and should still be treated as unverified.
 5. Continue expanding admin feature coverage across the remaining controller surface once Laravel test execution is available again.

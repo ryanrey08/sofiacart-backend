@@ -45,7 +45,7 @@ class PlatformReportsController extends Controller
             default => $this->merchantSalesQuery()->get(),
         };
 
-        return response()->streamDownload(function () use ($rows): void {
+        return response()->streamDownload(function () use ($rows, $type): void {
             $handle = fopen('php://output', 'w');
             fputcsv($handle, $this->exportColumns($type));
 

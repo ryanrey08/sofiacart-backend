@@ -20,6 +20,7 @@ use App\Models\Refund;
 use App\Models\User;
 use Database\Seeders\AdminAuthorizationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -277,6 +278,19 @@ class AdminBackendTest extends TestCase
             ->assertJsonValidationErrors('type');
     }
 
+    public function test_platform_report_export_streams_the_selected_report_columns(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
+
+        $response = $this->get('/api/admin/reports/export?type=payment_status')->assertOk();
+
+        $this->assertStringContainsString(
+            'status,payments_count,total_amount',
+            $response->streamedContent(),
+        );
+    }
+
     public function test_refunds_cannot_exceed_remaining_payment_balance(): void
     {
         $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
@@ -307,6 +321,86 @@ class AdminBackendTest extends TestCase
             'status' => RefundStatus::Pending->value,
         ])->assertStatus(422)
             ->assertJsonValidationErrors('amount');
+    }
+
+    public function test_payment_can_receive_multiple_partial_refunds(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $merchant = Merchant::factory()->create();
+        $order = Order::factory()->create([
+            'merchant_id' => $merchant->id,
+            'status' => OrderStatus::Completed,
+            'payment_status' => OrderPaymentStatus::Paid,
+            'total_amount' => 100,
+        ]);
+        $payment = Payment::create([
+            'merchant_id' => $merchant->id,
+            'order_id' => $order->id,
+            'reference' => 'PAY-REFUND-PARTIAL-001',
+            'gateway' => 'gcash',
+            'status' => PaymentStatus::Completed,
+            'amount' => 100,
+        ]);
+
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
+
+        $this->postJson('/api/admin/refunds', [
+            'merchant_id' => $merchant->id,
+            'payment_id' => $payment->id,
+            'order_id' => $order->id,
+            'reference' => 'REF-PARTIAL-001',
+            'amount' => 40,
+            'status' => RefundStatus::Processed->value,
+        ])->assertOk();
+
+        $this->postJson('/api/admin/refunds', [
+            'merchant_id' => $merchant->id,
+            'payment_id' => $payment->id,
+            'order_id' => $order->id,
+            'reference' => 'REF-PARTIAL-002',
+            'amount' => 60,
+            'status' => RefundStatus::Processed->value,
+        ])->assertOk();
+
+        $this->assertDatabaseHas('payments', [
+            'id' => $payment->id,
+            'status' => PaymentStatus::Refunded->value,
+        ]);
+    }
+
+    public function test_merchant_billing_counts_only_processed_refunds(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $merchant = Merchant::factory()->create();
+        $payment = Payment::create([
+            'merchant_id' => $merchant->id,
+            'reference' => 'PAY-BILLING-001',
+            'gateway' => 'gcash',
+            'status' => PaymentStatus::Completed,
+            'amount' => 100,
+        ]);
+        Refund::create([
+            'merchant_id' => $merchant->id,
+            'payment_id' => $payment->id,
+            'reference' => 'REF-BILLING-PROCESSED',
+            'amount' => 10,
+            'status' => RefundStatus::Processed,
+        ]);
+        Refund::create([
+            'merchant_id' => $merchant->id,
+            'payment_id' => $payment->id,
+            'reference' => 'REF-BILLING-PENDING',
+            'amount' => 40,
+            'status' => RefundStatus::Pending,
+        ]);
+
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
+
+        $this->getJson("/api/admin/merchants/{$merchant->id}/billing")
+            ->assertOk()
+            ->assertJsonPath('data.refunds_total', '10.00')
+            ->assertJsonPath('data.refunds_count', 1)
+            ->assertJsonPath('data.net_total', '90.00');
     }
 
     public function test_reducing_a_processed_refund_restores_payment_and_order_statuses(): void
@@ -388,6 +482,35 @@ class AdminBackendTest extends TestCase
             ->assertJsonValidationErrors('permission');
     }
 
+    public function test_settings_updates_preserve_omitted_values_and_descriptions(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $setting = AdminSetting::query()->create([
+            'key' => 'storefront.name',
+            'value' => 'SofiaCart',
+            'description' => 'The public store name.',
+            'is_secret' => false,
+        ]);
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
+
+        $this->putJson('/api/admin/settings', [
+            'settings' => [['key' => $setting->key]],
+        ])->assertOk();
+
+        $this->assertSame('SofiaCart', $setting->fresh()->value);
+        $this->assertSame('The public store name.', $setting->fresh()->description);
+
+        $this->putJson('/api/admin/settings', [
+            'settings' => [[
+                'key' => $setting->key,
+                'description' => 'Updated description.',
+            ]],
+        ])->assertOk();
+
+        $this->assertSame('SofiaCart', $setting->fresh()->value);
+        $this->assertSame('Updated description.', $setting->fresh()->description);
+    }
+
     public function test_secret_settings_remain_masked_and_preserve_existing_values_when_only_metadata_changes(): void
     {
         $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
@@ -436,6 +559,32 @@ class AdminBackendTest extends TestCase
             'is_secret' => true,
         ]);
         $this->assertSame(['secret' => 'top-secret-value'], $setting->fresh()->value);
+    }
+
+    public function test_provisioning_requires_force_for_existing_accounts_and_revokes_their_tokens(): void
+    {
+        $merchant = Merchant::factory()->create();
+        $user = $merchant->user;
+        $token = $user->createToken('storefront-device', ['storefront'])->accessToken;
+
+        $result = Artisan::call('admin:provision-super-admin', [
+            'email' => $user->email,
+            'name' => 'Promoted Super Admin',
+        ]);
+
+        $this->assertSame(1, $result);
+        $this->assertFalse($user->fresh()->isActiveAdmin());
+        $this->assertDatabaseHas('personal_access_tokens', ['id' => $token->id]);
+
+        $result = Artisan::call('admin:provision-super-admin', [
+            'email' => $user->email,
+            'name' => 'Promoted Super Admin',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $result);
+        $this->assertTrue($user->fresh()->hasAdminRole(AdminRoleRegistry::SUPER_ADMIN));
+        $this->assertDatabaseMissing('personal_access_tokens', ['id' => $token->id]);
     }
 
     public function test_system_logs_redact_sensitive_metadata_fields(): void
