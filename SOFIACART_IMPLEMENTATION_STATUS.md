@@ -96,8 +96,17 @@ The following results came from the previous session, before the current resume 
 
 ## Exact next steps
 
-1. Make the existing `sofiacart-frontend` source branch available as the active workspace checkout (or include it alongside this backend checkout). This session cannot clone or modify the separate repository from the backend workspace.
-2. Integrate the Super Admin login/me/logout flow, separate protected admin layout, and permission-aware route/sidebar navigation with the verified `/api/admin/*` routes; connect the requested admin resource pages to those endpoints while preserving storefront and merchant behavior.
-3. Run the frontend's existing `npm ci`, `npm run lint`, `npx tsc --noEmit`, and `npm run build` commands from the frontend checkout; report results and fix failures.
-4. Restore backend `vendor/` with valid GitHub package-download authentication (without committing credentials), then run `vendor/bin/pint` and `php artisan test tests/Feature/Admin/AdminBackendTest.php`. The latest regression tests remain unexecuted.
-5. Rerun `parallel_validation` after final backend code review fixes; the previous attempt timed out before checks started.
+1. Resolve the stacked pull requests in the order recorded below before merging either branch.
+2. Make the existing `sofiacart-frontend` source branch available as the active workspace checkout (or include it alongside this backend checkout). This session cannot clone or modify the separate repository from the backend workspace.
+3. Integrate the Super Admin login/me/logout flow, separate protected admin layout, and permission-aware route/sidebar navigation with the verified `/api/admin/*` routes; connect the requested admin resource pages to those endpoints while preserving storefront and merchant behavior.
+4. Run the frontend's existing `npm ci`, `npm run lint`, `npx tsc --noEmit`, and `npm run build` commands from the frontend checkout; report results and fix failures.
+5. Restore backend `vendor/` with valid GitHub package-download authentication (without committing credentials), then run `vendor/bin/pint` and `php artisan test tests/Feature/Admin/AdminBackendTest.php`. The latest regression tests remain unexecuted.
+6. Rerun `parallel_validation` after final backend code review fixes; the previous attempt timed out before checks started.
+
+## Stacked pull request state (2026-09-29)
+
+- PR #1, [Scaffold SofiaCart Laravel API and add Docker-based local development stack](https://github.com/ryanrey08/sofiacart-backend/pull/1), is **open and draft**. Its base is `main` at `3a113f69cd7bd505258d4cc4a56187919840df1b`; its head is `copilot/build-laravel-rest-api-backend` at `55ce886c1531384d32aa0977ebed3b55053a0930`. Its 3 commits and 144 changed files provide the Laravel/Docker foundation and merchant/customer commerce API.
+- PR #2, [Add admin auth, RBAC, and Super Admin backend APIs for Phase 3](https://github.com/ryanrey08/sofiacart-backend/pull/2), is **open and not draft**. Its head is `copilot/implement-phase-3-backend-integration` at `be5845ead9d4fb9fd4bb3b9ad2c9fee33a2e30b7`; its base branch is PR #1's head branch at exactly `55ce886c1531384d32aa0977ebed3b55053a0930`. It has 25 commits and adds the admin auth/RBAC/API layer (73 changed files in the PR comparison). Thus PR #2 is explicitly stacked on and depends on PR #1; its PR diff is incremental relative to PR #1.
+- Neither PR has a GitHub review approval or review comments. PR #1 remains draft. The exposed status checks have no status contexts; the visible `copilot` check is an in-progress Copilot cloud-agent run (with a prior successful agent run), not evidence that backend tests or required CI have passed. No required successful validation checks or approval are established for merging PR #1.
+- **Safe resolution:** keep both PRs open and preserve their branches. Do not merge PR #2 or change its base while PR #1 is still draft/incomplete. The repository owner should finish and review PR #1, mark it ready, and satisfy its required checks/approvals; merge PR #1 first. Then retarget PR #2 to `main`, resolve and validate any conflicts, obtain its required checks/approval, and only then merge it. No merge was performed in this session.
+- GitHub rejected a normal merge attempt on PR #2 with HTTP 403 because it is stacked; the available merge tool does not provide the asynchronous stacked-PR merge operation. That endpoint should not be used as a workaround before PR #1 is ready and merged.
