@@ -10,7 +10,6 @@ use App\Enums\ProductStatus;
 use App\Enums\RefundStatus;
 use App\Enums\TransactionStatus;
 use App\Enums\TransactionType;
-use App\Enums\UserRole;
 use App\Models\Category;
 use App\Models\Customer;
 use App\Models\InventoryLog;
@@ -20,24 +19,13 @@ use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Refund;
 use App\Models\Transaction;
-use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        User::query()->firstOrCreate(
-            ['email' => 'admin@sofiacart.test'],
-            [
-                'role' => UserRole::Admin,
-                'name' => 'SofiaCart Admin',
-                'phone' => '09171234567',
-                'password' => Hash::make('password'),
-                'email_verified_at' => now(),
-            ]
-        );
+        $this->call(AdminAuthorizationSeeder::class);
 
         Merchant::factory()->count(3)->create()->each(function (Merchant $merchant): void {
             $merchant->update(['status' => MerchantStatus::Verified]);

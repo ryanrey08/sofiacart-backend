@@ -27,7 +27,7 @@ class CustomerController extends Controller
             });
         }
 
-        return CustomerResource::collection($query->latest()->paginate((int) $request->integer('per_page', 15)));
+        return CustomerResource::collection($query->latest()->paginate($this->pageSize($request)));
     }
 
     public function store(StoreCustomerRequest $request): CustomerResource

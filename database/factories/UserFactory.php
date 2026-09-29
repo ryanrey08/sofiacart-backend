@@ -19,6 +19,8 @@ class UserFactory extends Factory
     {
         return [
             'role' => UserRole::Merchant,
+            'is_active' => true,
+            'last_login_at' => null,
             'phone' => '09'.fake()->numerify('#########'),
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),

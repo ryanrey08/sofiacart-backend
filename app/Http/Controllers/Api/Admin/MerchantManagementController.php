@@ -1,0 +1,134 @@
+<?php
+
+namespace App\Http\Controllers\Api\Admin;
+
+use App\Enums\PaymentStatus;
+use App\Enums\RefundStatus;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\UpdateMerchantStatusRequest;
+use App\Http\Resources\Admin\AdminAuditLogResource;
+use App\Http\Resources\Admin\AdminMerchantResource;
+use App\Models\AdminAuditLog;
+use App\Models\Merchant;
+use App\Services\AdminAuditLogger;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class MerchantManagementController extends Controller
+{
+    public function __construct(
+        protected AdminAuditLogger $auditLogger,
+    ) {}
+
+    public function index(Request $request)
+    {
+        $query = Merchant::query()
+            ->with('user')
+            ->withCount(['orders', 'products'])
+            ->withSum([
+                'payments' => fn ($payments) => $payments->whereIn('status', $this->collectedPaymentStatuses()),
+            ], 'amount');
+
+        if ($status = $request->string('status')->toString()) {
+            $query->where('status', $status);
+        }
+
+        if ($search = $request->string('search')->toString()) {
+            $query->where(function ($builder) use ($search): void {
+                $builder->where('store_name', 'like', "%{$search}%")
+                    ->orWhere('business_name', 'like', "%{$search}%")
+                    ->orWhere('store_slug', 'like', "%{$search}%")
+                    ->orWhere('tin', 'like', "%{$search}%")
+                    ->orWhereHas('user', fn ($user) => $user->where('email', 'like', "%{$search}%"));
+            });
+        }
+
+        return AdminMerchantResource::collection(
+            $query->latest()->paginate($this->pageSize($request))
+        );
+    }
+
+    public function show(Merchant $merchant): AdminMerchantResource
+    {
+        return AdminMerchantResource::make(
+            $merchant->load(['user'])
+                ->loadCount(['orders', 'products'])
+                ->loadSum([
+                    'payments' => fn ($payments) => $payments->whereIn('status', $this->collectedPaymentStatuses()),
+                ], 'amount')
+        );
+    }
+
+    public function updateStatus(UpdateMerchantStatusRequest $request, Merchant $merchant): AdminMerchantResource
+    {
+        $merchant->update(['status' => $request->validated('status')]);
+
+        $this->auditLogger->log(
+            'admin.merchants.status',
+            $request->user(),
+            $merchant,
+            $request,
+            'Merchant status updated.',
+            [
+                'status' => $request->validated('status'),
+                'reason' => $request->validated('reason'),
+            ],
+        );
+
+        return AdminMerchantResource::make($merchant->fresh()->load('user'));
+    }
+
+    public function onboardingHistory(Request $request, Merchant $merchant)
+    {
+        return AdminAuditLogResource::collection(
+            AdminAuditLog::query()
+                ->with('actor')
+                ->where('subject_type', $merchant->getMorphClass())
+                ->where('subject_id', $merchant->id)
+                ->where('action', 'like', 'admin.merchants.%')
+                ->latest('created_at')
+                ->paginate($this->pageSize($request))
+        );
+    }
+
+    public function billing(Merchant $merchant): JsonResponse
+    {
+        $paymentsTotal = (float) $merchant->payments()
+            ->whereIn('status', $this->collectedPaymentStatuses())
+            ->sum('amount');
+        $refundsTotal = (float) $merchant->refunds()
+            ->where('status', RefundStatus::Processed)
+            ->sum('amount');
+
+        return response()->json([
+            'data' => [
+                'merchant_id' => $merchant->id,
+                'store_name' => $merchant->store_name,
+                'payments_total' => number_format($paymentsTotal, 2, '.', ''),
+                'refunds_total' => number_format($refundsTotal, 2, '.', ''),
+                'net_total' => number_format($paymentsTotal - $refundsTotal, 2, '.', ''),
+                'payments_count' => $merchant->payments()
+                    ->whereIn('status', $this->collectedPaymentStatuses())
+                    ->count(),
+                'refunds_count' => $merchant->refunds()
+                    ->where('status', RefundStatus::Processed)
+                    ->count(),
+                'transactions_count' => $merchant->transactions()->count(),
+                'recent_payments' => $merchant->payments()
+                    ->with('refunds')
+                    ->latest('created_at')
+                    ->limit(10)
+                    ->get(),
+            ],
+        ]);
+    }
+
+    protected function collectedPaymentStatuses(): array
+    {
+        return [
+            PaymentStatus::Completed->value,
+            PaymentStatus::PartiallyRefunded->value,
+            PaymentStatus::Refunded->value,
+        ];
+    }
+}

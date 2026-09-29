@@ -12,11 +12,11 @@ use App\Http\Requests\UpdateOrderStatusRequest;
 use App\Http\Resources\OrderResource;
 use App\Models\Customer;
 use App\Models\Order;
-use App\Models\OrderItem;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class OrdersController extends Controller
 {
@@ -48,7 +48,7 @@ class OrdersController extends Controller
             $query->whereDate('ordered_at', '<=', $request->date('date_to'));
         }
 
-        return OrderResource::collection($query->latest('ordered_at')->paginate((int) $request->integer('per_page', 15)));
+        return OrderResource::collection($query->latest('ordered_at')->paginate($this->pageSize($request)));
     }
 
     public function store(StoreOrderRequest $request): OrderResource
@@ -107,10 +107,14 @@ class OrdersController extends Controller
         return OrderResource::make($model->fresh()->load(['customer', 'items']));
     }
 
-    public function updateStatus(UpdateOrderStatusRequest $request, Request $httpRequest, int $order): OrderResource
+    public function updateStatus(UpdateOrderStatusRequest $request, int $order): OrderResource
     {
-        $model = $this->scopeMerchant(Order::query()->with(['customer', 'items']), $httpRequest)->findOrFail($order);
-        $model->update($request->validated());
+        $model = $this->scopeMerchant(Order::query()->with(['customer', 'items']), $request)->findOrFail($order);
+        $status = OrderStatus::from($request->validated('status'));
+
+        $this->ensureValidStatusTransition($model->status, $status);
+
+        $model->update(['status' => $status]);
 
         return OrderResource::make($model->fresh()->load(['customer', 'items']));
     }
@@ -143,5 +147,25 @@ class OrdersController extends Controller
                 'total_price' => $item['quantity'] * $item['unit_price'],
             ];
         })->all();
+    }
+
+    protected function ensureValidStatusTransition(OrderStatus $currentStatus, OrderStatus $newStatus): void
+    {
+        if ($currentStatus === $newStatus) {
+            return;
+        }
+
+        $allowedTransitions = [
+            OrderStatus::Pending->value => [OrderStatus::Processing->value, OrderStatus::Cancelled->value],
+            OrderStatus::Processing->value => [OrderStatus::Completed->value, OrderStatus::Cancelled->value],
+            OrderStatus::Completed->value => [],
+            OrderStatus::Cancelled->value => [],
+        ];
+
+        if (! in_array($newStatus->value, $allowedTransitions[$currentStatus->value] ?? [], true)) {
+            throw ValidationException::withMessages([
+                'status' => ["The order cannot transition from {$currentStatus->value} to {$newStatus->value}."],
+            ]);
+        }
     }
 }
