@@ -57,10 +57,17 @@
 - Frontend repository unavailable in the current workspace.
 - Laravel Boost bootstrap is partially blocked by missing `boost:*` Artisan commands after package installation.
 - Laravel dependency restoration is currently blocked in this session because `composer install` could not authenticate against GitHub to download required packages, leaving `vendor/` unavailable for `php artisan` commands.
+- During the current resume attempt, `composer require laravel/boost --dev --no-interaction` also failed because package downloads require GitHub authentication. Its incidental Composer constraint edits were reverted; no application code or dependency declarations were changed.
+
+## Current resume attempt
+
+- Confirmed the starting working tree was clean and PHP 8.3.6 / Composer 2.10.3 are available.
+- Confirmed the frontend repository is not present under `/home/runner/work`; this workspace contains only `sofiacart-backend`.
+- No backend tests or Pint checks were run in this attempt because `vendor/` is missing. No frontend integration or API contract changes were made.
 
 ## Exact next steps
 
-1. Restore `vendor/` successfully (or provide a workspace with dependencies already installed), then run `php artisan pint` and targeted admin feature tests covering settings masking/preservation and system-log redaction.
+1. Restore `vendor/` using working GitHub package-download authentication (or provide a workspace with dependencies already installed), then run `php artisan pint` and targeted admin feature tests covering settings masking/preservation and system-log redaction.
 2. Re-run any remaining backend validation that is still unverified; the last `parallel_validation` attempt in the earlier session timed out and should still be treated as unverified.
 3. Continue expanding admin feature coverage across the remaining controller surface once Laravel test execution is available again.
 4. If a future session includes the frontend repository, implement the remaining admin UI and RBAC route/menu protection there.
