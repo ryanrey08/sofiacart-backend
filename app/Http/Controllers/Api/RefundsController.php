@@ -72,6 +72,14 @@ class RefundsController extends Controller
             $model = $this->scopeMerchant(Refund::query(), $request)
                 ->lockForUpdate()
                 ->findOrFail($refund);
+            $originalPayment = Payment::where('merchant_id', $model->merchant_id)
+                ->lockForUpdate()
+                ->findOrFail($model->payment_id);
+            $originalOrder = $model->order_id
+                ? Order::where('merchant_id', $model->merchant_id)
+                    ->lockForUpdate()
+                    ->find($model->order_id)
+                : null;
             $data = $request->validated();
             $data['merchant_id'] = $this->merchantIdForWrite($request, $data['merchant_id'] ?? $model->merchant_id);
             [$payment, $order] = $this->ensureRelationsBelongToMerchant(
@@ -82,6 +90,11 @@ class RefundsController extends Controller
             $this->ensureRefundIsAllowed($payment, $data['amount'] ?? (float) $model->amount, $model);
 
             $model->update($data);
+
+            if ($originalPayment->id !== $payment->id || $originalOrder?->id !== $order?->id) {
+                $this->syncRefundedBalances($originalPayment, $originalOrder);
+            }
+
             $this->syncRefundedBalances($payment, $order);
 
             return $model->fresh();
@@ -105,9 +118,13 @@ class RefundsController extends Controller
 
         $order = null;
         if ($orderId) {
-            $order = Order::where('merchant_id', $merchantId)->findOrFail($orderId);
+            $order = Order::where('merchant_id', $merchantId)
+                ->lockForUpdate()
+                ->findOrFail($orderId);
         } elseif ($payment->order_id) {
-            $order = Order::where('merchant_id', $merchantId)->find($payment->order_id);
+            $order = Order::where('merchant_id', $merchantId)
+                ->lockForUpdate()
+                ->find($payment->order_id);
         }
 
         return [$payment, $order];

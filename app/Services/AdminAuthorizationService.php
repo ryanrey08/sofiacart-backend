@@ -76,6 +76,20 @@ class AdminAuthorizationService
             ]);
         }
 
+        $actorPermissions = $actor->allAdminPermissions()->pluck('name');
+        if ($permissions->pluck('name')->diff($actorPermissions)->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'permissions' => ['You cannot assign permissions you do not hold.'],
+            ]);
+        }
+
+        if ($permissions->contains('name', AdminPermissionRegistry::USERS_ASSIGN_SUPER_ADMIN)
+            && ! $actor->hasAdminPermission(AdminPermissionRegistry::USERS_ASSIGN_SUPER_ADMIN)) {
+            throw ValidationException::withMessages([
+                'permissions' => ['You are not allowed to grant Super Admin assignment rights.'],
+            ]);
+        }
+
         return $permissions->values();
     }
 

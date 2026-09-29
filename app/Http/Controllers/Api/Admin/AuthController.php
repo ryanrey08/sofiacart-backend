@@ -189,7 +189,7 @@ class AuthController extends Controller
 
         if (! $resetUser?->isActiveAdmin()) {
             throw ValidationException::withMessages([
-                'email' => ['This password reset request is not valid.'],
+                'email' => [__(Password::INVALID_TOKEN)],
             ]);
         }
 

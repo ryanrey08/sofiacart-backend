@@ -61,6 +61,32 @@ class AdminBackendTest extends TestCase
         $this->getJson('/api/admin/dashboard')->assertOk();
     }
 
+    public function test_password_reset_errors_do_not_disclose_active_admin_account_status(): void
+    {
+        $merchant = Merchant::factory()->create();
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $resetRequest = [
+            'token' => 'invalid-token',
+            'password' => 'new-password',
+            'password_confirmation' => 'new-password',
+        ];
+
+        $inactiveResponse = $this->postJson('/api/admin/auth/reset-password', [
+            ...$resetRequest,
+            'email' => $merchant->user->email,
+        ])->assertStatus(422);
+
+        $activeAdminResponse = $this->postJson('/api/admin/auth/reset-password', [
+            ...$resetRequest,
+            'email' => $admin->email,
+        ])->assertStatus(422);
+
+        $this->assertSame(
+            $inactiveResponse->json('errors.email'),
+            $activeAdminResponse->json('errors.email'),
+        );
+    }
+
     public function test_non_admin_scoped_token_cannot_access_admin_routes(): void
     {
         $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
@@ -488,6 +514,72 @@ class AdminBackendTest extends TestCase
         ]);
     }
 
+    public function test_moving_a_refund_resynchronizes_its_original_payment_and_order(): void
+    {
+        $admin = $this->createAdminWithRole(AdminRoleRegistry::SUPER_ADMIN);
+        $merchant = Merchant::factory()->create();
+        $originalOrder = Order::factory()->create([
+            'merchant_id' => $merchant->id,
+            'status' => OrderStatus::Completed,
+            'payment_status' => OrderPaymentStatus::Refunded,
+            'total_amount' => 100,
+        ]);
+        $newOrder = Order::factory()->create([
+            'merchant_id' => $merchant->id,
+            'status' => OrderStatus::Completed,
+            'payment_status' => OrderPaymentStatus::Paid,
+            'total_amount' => 100,
+        ]);
+        $originalPayment = Payment::create([
+            'merchant_id' => $merchant->id,
+            'order_id' => $originalOrder->id,
+            'reference' => 'PAY-REFUND-MOVE-ORIGINAL',
+            'gateway' => 'gcash',
+            'status' => PaymentStatus::Refunded,
+            'amount' => 100,
+        ]);
+        $newPayment = Payment::create([
+            'merchant_id' => $merchant->id,
+            'order_id' => $newOrder->id,
+            'reference' => 'PAY-REFUND-MOVE-NEW',
+            'gateway' => 'gcash',
+            'status' => PaymentStatus::Completed,
+            'amount' => 100,
+        ]);
+        $refund = Refund::create([
+            'merchant_id' => $merchant->id,
+            'payment_id' => $originalPayment->id,
+            'order_id' => $originalOrder->id,
+            'reference' => 'REF-MOVE-001',
+            'amount' => 100,
+            'status' => RefundStatus::Processed,
+        ]);
+
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
+
+        $this->patchJson("/api/admin/refunds/{$refund->id}", [
+            'payment_id' => $newPayment->id,
+            'order_id' => $newOrder->id,
+        ])->assertOk();
+
+        $this->assertDatabaseHas('payments', [
+            'id' => $originalPayment->id,
+            'status' => PaymentStatus::Completed->value,
+        ]);
+        $this->assertDatabaseHas('orders', [
+            'id' => $originalOrder->id,
+            'payment_status' => OrderPaymentStatus::Paid->value,
+        ]);
+        $this->assertDatabaseHas('payments', [
+            'id' => $newPayment->id,
+            'status' => PaymentStatus::Refunded->value,
+        ]);
+        $this->assertDatabaseHas('orders', [
+            'id' => $newOrder->id,
+            'payment_status' => OrderPaymentStatus::Refunded->value,
+        ]);
+    }
+
     public function test_orders_cannot_skip_required_status_transitions(): void
     {
         $merchant = Merchant::factory()->create();
@@ -599,6 +691,34 @@ class AdminBackendTest extends TestCase
             'role_ids' => [$privilegedRole->id],
         ])->assertStatus(422)
             ->assertJsonValidationErrors('roles');
+    }
+
+    public function test_admin_cannot_assign_direct_permissions_they_do_not_hold(): void
+    {
+        $role = AdminRole::query()->create([
+            'slug' => 'direct-permission-manager',
+            'name' => 'Direct Permission Manager',
+            'is_system' => false,
+        ]);
+        $usersManage = AdminPermission::query()->firstWhere('name', AdminPermissionRegistry::USERS_MANAGE);
+        $permissionsManage = AdminPermission::query()->firstWhere('name', AdminPermissionRegistry::PERMISSIONS_MANAGE);
+        $superAdminAssignment = AdminPermission::query()->firstWhere('name', AdminPermissionRegistry::USERS_ASSIGN_SUPER_ADMIN);
+        $role->permissions()->sync([$usersManage->id]);
+
+        $admin = User::factory()->admin()->create([
+            'email' => fake()->unique()->safeEmail(),
+        ]);
+        $admin->adminRoles()->sync([$role->id]);
+        $admin->adminPermissions()->sync([$permissionsManage->id]);
+        $target = User::factory()->admin()->create([
+            'email' => fake()->unique()->safeEmail(),
+        ]);
+        Sanctum::actingAs($admin, ['admin'], 'sanctum');
+
+        $this->patchJson("/api/admin/users/{$target->id}", [
+            'permission_ids' => [$superAdminAssignment->id],
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('permissions');
     }
 
     public function test_settings_updates_preserve_omitted_values_and_descriptions(): void
