@@ -22,13 +22,13 @@
 
 ### Frontend
 
-- The `sofiacart-frontend` repository is **not present in this workspace**, so frontend admin pages, sidebar/navigation, RBAC-aware route protection, and API integration could not be implemented from this session.
-- Once the frontend repository is available in the workspace, continue with:
-  - Admin layout/sidebar
-  - Dashboard, merchants, onboarding, billing, orders, products, customers, payments, reports, platform settings, user management, roles management, and system logs pages
-  - Permission-aware menu/page protection
-  - Loading, empty, and error states
-  - Frontend lint/type/build verification
+- `sofiacart-frontend` is not checked out in this workspace. GitHub inspection found its source-bearing branch `copilot/build-nextjs-ecommerce-frontend` at `a8f4c7af8ac73ec7a9619ae6033f9957d9ccaff5`; `main` currently contains only `.gitignore` and `README.md`.
+- The source-bearing branch is a merchant-facing scaffold, not the requested Super Admin implementation:
+  - Login submits to `/api/auth/login`, stores the storefront auth response, and uses one generic dashboard guard. The backend admin flow is separate: `POST /api/admin/auth/login` returns `{ message, token, user }`; `/api/admin/auth/me` returns the admin user with `admin_roles`, `admin_permissions`, and `effective_permissions`. Admin tokens must be used for endpoints protected by `auth:sanctum`, `admin`, and `admin.token`.
+  - Sidebar entries are hard-coded merchant links without permission checks. The existing dashboard and resource pages render mock data; resource hooks call `/api/v1/*` endpoints, and the shared query helper silently returns fallback mock data when requests fail.
+  - Merchant onboarding/billing admin routes exist at `/api/admin/merchants/{merchant}/onboarding-history` and `/billing`; admin orders/products/customers/payments/report/settings/user/role/permission/log endpoints and their permission middleware are defined in `routes/api.php`. No Super Admin-specific UI for those routes was found in the inspected branch.
+- Frontend integration still requires the source-bearing frontend branch to be made available as an authorized workspace checkout. This session cannot clone repositories or edit the separate frontend repository from the backend checkout, so no frontend files were changed and frontend lint/type/build checks could not run.
+- Once the frontend source checkout is available, implement the separate admin auth/layout and permission-aware navigation against only the routes and permission names present in this backend, then integrate the requested admin resource pages and replace mock fallbacks with visible loading/error/empty states.
 
 ## Files modified in this session
 
@@ -84,10 +84,11 @@ The following results came from the previous session, before the current resume 
 ## Current resume attempt
 
 - Confirmed the starting working tree was clean and PHP 8.3.6 / Composer 2.10.3 are available.
-- Confirmed the frontend repository is not present under `/home/runner/work`; this workspace contains only `sofiacart-backend`.
-- Backend feature tests and Pint could not run because `vendor/` is missing. No frontend integration or API contract changes were made.
+- Confirmed the frontend repository is not checked out under `/home/runner/work`; this workspace contains only `sofiacart-backend`.
+- Backend feature tests and Pint could not run because `vendor/` is missing. No backend API contract or application changes were made for the requested frontend task.
 - Retried `composer install --no-interaction --prefer-dist --no-progress` against the existing lockfile. It failed with `Could not authenticate against github.com`; Composer diagnostics also reported GitHub API rate-limit HTTP 403. Neither `COMPOSER_AUTH` nor a default Composer auth file is configured in this environment. `composer.json` and `composer.lock` remain unchanged, and `vendor/` was not restored.
-- Located the public `ryanrey08/sofiacart-frontend` repository using GitHub access. Its current `main` root listing contains only `.gitignore` and `README.md`; no frontend source tree is available to compare. This workspace cannot clone another repository into the checkout.
+- Inspected frontend commit `a8f4c7af8ac73ec7a9619ae6033f9957d9ccaff5` through read-only GitHub access. Confirmed the existing scaffold's storefront auth, mock-backed dashboard/resource pages, fallback-on-error query hook, and static merchant sidebar. The separate frontend checkout is not available for local edits or validation.
+- For this request, only `SOFIACART_IMPLEMENTATION_STATUS.md` was changed. No frontend lint/type/build/test command was run because there is no frontend worktree; no backend feature test or Pint run is claimed for the current changes.
 - Applied the backend fixes identified by code review: captured the report type in streamed exports, allowed valid additional partial refunds, preserved omitted setting values/descriptions, made existing-account Super Admin promotion require `--force` and revoke prior tokens, and limited billing refund totals/counts to processed refunds. Added regression coverage and corrected the provisioning README instructions.
 - Follow-up review improvements serialize selected scalar report columns (including enum values), cap audit-log page size, use aggregate billing queries while retaining nested refunds for the ten recent payments, and normalize partial-refund statuses before migration rollback narrows enum values. Added CSV row and page-size regression assertions.
 - Final review fixes apply permission-subset checks to direct grants as well as roles, email new-admin password setup links without returning tokens, use identical invalid-token errors for non-admin reset requests, resynchronize old and new payment/order balances when moving a refund, serialize last-Super-Admin protection with row locks, align collected-payment totals, stream report rows via a cursor, and mark the PHPUnit key as test-only. Added regression coverage for these paths.
@@ -95,8 +96,8 @@ The following results came from the previous session, before the current resume 
 
 ## Exact next steps
 
-1. Configure valid GitHub package-download authentication for Composer in the execution environment (without committing credentials), then run `composer install --no-interaction --prefer-dist` using the existing lockfile.
-2. Once `vendor/` is restored, run `vendor/bin/pint` and `php artisan test tests/Feature/Admin/AdminBackendTest.php`; the new regression tests have not executed yet, so record their actual results and address any failures.
-3. Make the frontend repository's source tree available in the workspace through an authorized checkout/workspace setup. Compare its existing implementation with the verified routes and resource contracts before changing frontend integration.
-4. In a later session, rerun `parallel_validation` after the final review fixes and verify its security analysis covers the PHP changes; the latest attempt timed out before checks started.
-5. Continue expanding admin feature coverage across the remaining controller surface once Laravel test execution is available again.
+1. Make the existing `sofiacart-frontend` source branch available as the active workspace checkout (or include it alongside this backend checkout). This session cannot clone or modify the separate repository from the backend workspace.
+2. Integrate the Super Admin login/me/logout flow, separate protected admin layout, and permission-aware route/sidebar navigation with the verified `/api/admin/*` routes; connect the requested admin resource pages to those endpoints while preserving storefront and merchant behavior.
+3. Run the frontend's existing `npm ci`, `npm run lint`, `npx tsc --noEmit`, and `npm run build` commands from the frontend checkout; report results and fix failures.
+4. Restore backend `vendor/` with valid GitHub package-download authentication (without committing credentials), then run `vendor/bin/pint` and `php artisan test tests/Feature/Admin/AdminBackendTest.php`. The latest regression tests remain unexecuted.
+5. Rerun `parallel_validation` after final backend code review fixes; the previous attempt timed out before checks started.
