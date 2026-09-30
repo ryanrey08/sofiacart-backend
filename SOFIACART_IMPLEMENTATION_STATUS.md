@@ -2,6 +2,11 @@
 
 ## Completed in this repository
 
+- Merchant product management uses these existing `auth:sanctum` routes, verified against the frontend's current product page and API hooks on `main`:
+  - `GET /api/v1/products?search=&status=&category_id=&page=&per_page=` returns paginated `{ data: ProductResource[], links, meta }`; `GET /api/v1/products/{id}` returns `{ data: ProductResource }`.
+  - `POST /api/v1/products` accepts multipart product fields and `images[]`, returning `201 { data: ProductResource }`. The frontend edits with multipart `POST /api/v1/products/{id}` plus `_method=PATCH`; status/archive changes use JSON `PATCH /api/v1/products/{id}`. Both update forms return `{ data: ProductResource }`; `DELETE /api/v1/products/{id}` returns `204`.
+  - `POST /api/v1/inventory/adjust` accepts `{ product_id, quantity_change, reason, notes }` and returns `{ message, product, inventory_log }`; `GET /api/v1/inventory/logs?product_id=&per_page=` returns paginated inventory-log resources. `GET /api/v1/categories?per_page=100` supplies category options in a paginated resource envelope.
+- Product fields are `name`, `slug`, `sku`, `description`, `category_id`, `status`, `price`, `stock_quantity`, and `images[]`. Status values are `draft`, `pending_approval`, `active`, `archived`, and `rejected`; slug/SKU are required and globally unique (the current product is excluded on update), price/stock cannot be negative, and images are optional JPG/PNG up to 5120 KB each. Variants/options are not part of this backend domain. Merchant IDs are derived from the authenticated user's merchant relationship; product and inventory reads/writes are scoped to that merchant, and category ownership is checked. Images are stored on the public disk; storage write failures return indexed 422 image errors and clean up files already written by that request.
 - Phase 3 backend admin foundation is in place: admin auth endpoints, Sanctum-backed session expiry, RBAC tables/models/seeders, admin middleware, admin dashboard, merchant management, customer management, platform reports, settings, user management, roles, permissions, and system logs.
 - Super Admin provisioning is available through `php artisan admin:provision-super-admin <email> <name> [--phone] [--force]`.
 - Admin session revocation is available through:
@@ -16,22 +21,27 @@
 
 ### Backend
 
+- Verify the product and inventory feature tests on an environment with Laravel dependencies installed; this checkout currently has no `vendor/` directory and Composer package downloads fail GitHub authentication.
 - Expand feature coverage for the rest of the admin surface beyond the currently implemented auth/RBAC/session/merchant safeguards.
 - Decide whether any additional platform-specific data structures are required for merchant billing workflows, onboarding notes, or private-document delivery beyond audit-log metadata.
 - `laravel/boost` is currently committed as a development dependency because the repository bootstrap instructions required it, but `php artisan boost:install` is still unavailable in this environment because no `boost:*` Artisan commands are registered. Decide in a follow-up whether to keep that dependency or remove it once the bootstrap path is clarified.
 
 ### Frontend
 
-- `sofiacart-frontend` is not checked out in this workspace. GitHub inspection found its source-bearing branch `copilot/build-nextjs-ecommerce-frontend` at `a8f4c7af8ac73ec7a9619ae6033f9957d9ccaff5`; `main` currently contains only `.gitignore` and `README.md`.
+- In the earlier Super Admin integration attempt, GitHub inspection found source on `copilot/build-nextjs-ecommerce-frontend` at `a8f4c7af8ac73ec7a9619ae6033f9957d9ccaff5`; at that time `main` contained only `.gitignore` and `README.md`. The merchant product implementation has since been inspected on the current frontend `main` for this API task.
 - The source-bearing branch is a merchant-facing scaffold, not the requested Super Admin implementation:
   - Login submits to `/api/auth/login`, stores the storefront auth response, and uses one generic dashboard guard. The backend admin flow is separate: `POST /api/admin/auth/login` returns `{ message, token, user }`; `/api/admin/auth/me` returns the admin user with `admin_roles`, `admin_permissions`, and `effective_permissions`. Admin tokens must be used for endpoints protected by `auth:sanctum`, `admin`, and `admin.token`.
   - Sidebar entries are hard-coded merchant links without permission checks. The existing dashboard and resource pages render mock data; resource hooks call `/api/v1/*` endpoints, and the shared query helper silently returns fallback mock data when requests fail.
   - Merchant onboarding/billing admin routes exist at `/api/admin/merchants/{merchant}/onboarding-history` and `/billing`; admin orders/products/customers/payments/report/settings/user/role/permission/log endpoints and their permission middleware are defined in `routes/api.php`. No Super Admin-specific UI for those routes was found in the inspected branch.
-- Frontend integration still requires the source-bearing frontend branch to be made available as an authorized workspace checkout. This session cannot clone repositories or edit the separate frontend repository from the backend checkout, so no frontend files were changed and frontend lint/type/build checks could not run.
-- Once the frontend source checkout is available, implement the separate admin auth/layout and permission-aware navigation against only the routes and permission names present in this backend, then integrate the requested admin resource pages and replace mock fallbacks with visible loading/error/empty states.
+- The frontend repository is not checked out in this backend workspace, so live browser-to-Laravel validation and frontend lint/type/build commands could not be run here; its product files were inspected read-only on GitHub.
+- The separate Super Admin frontend task still requires an authorized source checkout to implement admin auth/layout and permission-aware navigation against this backend's routes and permissions.
 
 ## Files modified in this session
 
+- `app/Http/Controllers/Api/ProductsController.php`
+- `tests/Feature/ProductCrudTest.php`
+- `tests/Feature/InventoryAdjustmentTest.php`
+- `SOFIACART_IMPLEMENTATION_STATUS.md`
 - `app/Http/Controllers/Api/Admin/AuthController.php`
 - `app/Http/Controllers/Api/Admin/AdminUserController.php`
 - `app/Http/Controllers/Api/Admin/SettingController.php`
@@ -76,7 +86,7 @@ The following results came from the previous session, before the current resume 
 
 ## Blockers
 
-- Frontend repository unavailable in the current workspace.
+- Frontend source was inspected read-only on GitHub (`main`); it is not checked out in this workspace, so a live browser-to-Laravel integration run could not be performed.
 - Laravel Boost bootstrap is partially blocked by missing `boost:*` Artisan commands after package installation.
 - Laravel dependency restoration is currently blocked in this session because `composer install` could not authenticate against GitHub to download required packages, leaving `vendor/` unavailable for `php artisan` commands.
 - During the earlier resume attempt, `composer require laravel/boost --dev --no-interaction` failed because package downloads require GitHub authentication. That command's incidental Composer edits were reverted; the repository's existing `laravel/boost` declaration remains unchanged.
@@ -85,10 +95,14 @@ The following results came from the previous session, before the current resume 
 
 - Confirmed the starting working tree was clean and PHP 8.3.6 / Composer 2.10.3 are available.
 - Confirmed the frontend repository is not checked out under `/home/runner/work`; this workspace contains only `sofiacart-backend`.
-- Backend feature tests and Pint could not run because `vendor/` is missing. No backend API contract or application changes were made for the requested frontend task.
+- During the earlier resume attempt, backend feature tests and Pint could not run because `vendor/` was missing, and no API contract or application changes were made for that attempt.
 - Retried `composer install --no-interaction --prefer-dist --no-progress` against the existing lockfile. It failed with `Could not authenticate against github.com`; Composer diagnostics also reported GitHub API rate-limit HTTP 403. Neither `COMPOSER_AUTH` nor a default Composer auth file is configured in this environment. `composer.json` and `composer.lock` remain unchanged, and `vendor/` was not restored.
-- Inspected frontend commit `a8f4c7af8ac73ec7a9619ae6033f9957d9ccaff5` through read-only GitHub access. Confirmed the existing scaffold's storefront auth, mock-backed dashboard/resource pages, fallback-on-error query hook, and static merchant sidebar. The separate frontend checkout is not available for local edits or validation.
-- For this request, only `SOFIACART_IMPLEMENTATION_STATUS.md` was changed. No frontend lint/type/build/test command was run because there is no frontend worktree; no backend feature test or Pint run is claimed for the current changes.
+- In the earlier admin attempt, inspected frontend commit `a8f4c7af8ac73ec7a9619ae6033f9957d9ccaff5` through read-only GitHub access and found the storefront auth, mock-backed dashboard/resource pages, fallback-on-error query hook, and static merchant sidebar. The current product integration was separately inspected on frontend `main`; the separate frontend checkout is not available for local edits or validation.
+- In the earlier resume attempt, only `SOFIACART_IMPLEMENTATION_STATUS.md` was changed for that attempt. No frontend lint/type/build/test command was run then because there was no frontend worktree.
+- For the merchant product task, the frontend implementation status, product API hooks, multipart payload builder, product page, and Axios auth client were inspected on the frontend repository's current `main`. Its calls match the existing backend paths and resource shapes; no product endpoints or domain fields needed to be invented.
+- Added focused regression tests for auth and merchant/product scoping (including forged merchant IDs), create/list/view/update/archive/delete, global SKU uniqueness and update self-exclusion, image validation/upload and multipart replacement, and cross-merchant inventory adjustment. Updated product image storage failure handling to return the expected indexed 422 field error and clean up partial writes.
+- `php -v` and `composer -V` succeeded. Laravel Boost setup was attempted as required by `AGENTS.md`, but `composer require laravel/boost --dev --no-interaction` could not download packages (`Could not authenticate against github.com`); its incidental manifest/lock changes were reverted. `vendor/` is absent, so Artisan tests, Pint, and route listing cannot run in this environment. Exact validation results for this attempt are recorded after local checks below.
+- Current validation: PHP syntax checks on `ProductsController.php`, `ProductCrudTest.php`, and `InventoryAdjustmentTest.php` passed; `git diff --check` and `composer validate --no-check-publish --no-interaction` passed. `php artisan test tests/Feature/ProductCrudTest.php tests/Feature/InventoryAdjustmentTest.php` and `php artisan route:list --path=api/v1/products` could not start because `vendor/autoload.php` is missing. Pint is likewise unavailable without installed vendor dependencies. The frontend checkout is absent locally, so this backend session did not run the frontend lint/type/build commands or a live frontend-to-Laravel request.
 - Applied the backend fixes identified by code review: captured the report type in streamed exports, allowed valid additional partial refunds, preserved omitted setting values/descriptions, made existing-account Super Admin promotion require `--force` and revoke prior tokens, and limited billing refund totals/counts to processed refunds. Added regression coverage and corrected the provisioning README instructions.
 - Follow-up review improvements serialize selected scalar report columns (including enum values), cap audit-log page size, use aggregate billing queries while retaining nested refunds for the ten recent payments, and normalize partial-refund statuses before migration rollback narrows enum values. Added CSV row and page-size regression assertions.
 - Final review fixes apply permission-subset checks to direct grants as well as roles, email new-admin password setup links without returning tokens, use identical invalid-token errors for non-admin reset requests, resynchronize old and new payment/order balances when moving a refund, serialize last-Super-Admin protection with row locks, align collected-payment totals, stream report rows via a cursor, and mark the PHPUnit key as test-only. Added regression coverage for these paths.

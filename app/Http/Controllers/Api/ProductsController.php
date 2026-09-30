@@ -10,6 +10,9 @@ use App\Http\Resources\ProductResource;
 use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class ProductsController extends Controller
 {
@@ -44,8 +47,8 @@ class ProductsController extends Controller
     {
         $data = $request->validated();
         $data['merchant_id'] = $this->merchantIdForWrite($request, $data['merchant_id'] ?? null);
-        $data['images'] = $this->storeImages($request, $data['merchant_id']);
         $this->ensureCategoryBelongsToMerchant($data['merchant_id'], $data['category_id'] ?? null);
+        $data['images'] = $this->storeImages($request, $data['merchant_id']);
 
         $product = Product::create($data);
 
@@ -86,10 +89,39 @@ class ProductsController extends Controller
             return null;
         }
 
-        return collect($request->file('images'))
-            ->map(fn ($file) => $file->store("products/{$merchantId}", 'public'))
-            ->values()
-            ->all();
+        $paths = [];
+
+        foreach ($request->file('images') as $index => $file) {
+            try {
+                $path = $file->store("products/{$merchantId}", 'public');
+            } catch (Throwable) {
+                $this->discardStoredImages($paths);
+
+                throw ValidationException::withMessages([
+                    "images.{$index}" => ["The images.{$index} failed to upload."],
+                ]);
+            }
+
+            if (! is_string($path) || $path === '') {
+                $this->discardStoredImages($paths);
+
+                throw ValidationException::withMessages([
+                    "images.{$index}" => ["The images.{$index} failed to upload."],
+                ]);
+            }
+
+            $paths[] = $path;
+        }
+
+        return $paths;
+    }
+
+    protected function discardStoredImages(array $paths): void
+    {
+        try {
+            Storage::disk('public')->delete($paths);
+        } catch (Throwable) {
+        }
     }
 
     protected function ensureCategoryBelongsToMerchant(int $merchantId, ?int $categoryId): void
