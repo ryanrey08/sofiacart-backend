@@ -64,4 +64,29 @@ class InventoryAdjustmentTest extends TestCase
         ])->assertStatus(422)
             ->assertInvalid(['quantity_change']);
     }
+
+    public function test_merchant_cannot_adjust_another_merchants_inventory(): void
+    {
+        $merchant = Merchant::factory()->create();
+        $otherMerchant = Merchant::factory()->create();
+        $product = Product::factory()->create([
+            'merchant_id' => $otherMerchant->id,
+            'category_id' => null,
+            'stock_quantity' => 10,
+        ]);
+
+        Sanctum::actingAs($merchant->user);
+
+        $this->postJson('/api/v1/inventory/adjust', [
+            'product_id' => $product->id,
+            'reason' => 'restock',
+            'quantity_change' => 5,
+        ])->assertNotFound();
+
+        $this->assertDatabaseHas('products', [
+            'id' => $product->id,
+            'stock_quantity' => 10,
+        ]);
+        $this->assertDatabaseMissing('inventory_logs', ['product_id' => $product->id]);
+    }
 }
