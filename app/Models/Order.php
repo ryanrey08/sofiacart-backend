@@ -24,6 +24,7 @@ class Order extends Model
         'total_amount',
         'notes',
         'ordered_at',
+        'inventory_restored',
     ];
 
     protected function casts(): array
@@ -33,6 +34,7 @@ class Order extends Model
             'payment_status' => OrderPaymentStatus::class,
             'total_amount' => 'decimal:2',
             'ordered_at' => 'datetime',
+            'inventory_restored' => 'boolean',
         ];
     }
 

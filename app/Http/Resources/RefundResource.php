@@ -2,11 +2,14 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\SanitizesMetadata;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class RefundResource extends JsonResource
 {
+    use SanitizesMetadata;
+
     public function toArray(Request $request): array
     {
         return [
@@ -19,7 +22,7 @@ class RefundResource extends JsonResource
             'reason' => $this->reason,
             'status' => $this->status?->value,
             'refunded_at' => $this->refunded_at?->toISOString(),
-            'metadata' => $this->metadata,
+            'metadata' => $this->sanitizeMetadata($this->metadata),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];

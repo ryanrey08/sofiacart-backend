@@ -40,6 +40,13 @@ class TransactionsController extends Controller
         $data['merchant_id'] = $this->merchantIdForWrite($request, $data['merchant_id'] ?? null);
         $this->ensureRelationsBelongToMerchant($data['merchant_id'], $data['payment_id'] ?? null, $data['order_id'] ?? null);
 
+        if (($data['payment_id'] ?? null) && empty($data['order_id'])) {
+            $payment = Payment::where('merchant_id', $data['merchant_id'])->find($data['payment_id']);
+            if ($payment?->order_id) {
+                $data['order_id'] = $payment->order_id;
+            }
+        }
+
         return TransactionResource::make(Transaction::create($data));
     }
 
@@ -68,12 +75,16 @@ class TransactionsController extends Controller
 
     protected function ensureRelationsBelongToMerchant(int $merchantId, ?int $paymentId, ?int $orderId): void
     {
+        $payment = null;
         if ($paymentId) {
-            Payment::where('merchant_id', $merchantId)->findOrFail($paymentId);
+            $payment = Payment::where('merchant_id', $merchantId)->findOrFail($paymentId);
         }
 
         if ($orderId) {
-            Order::where('merchant_id', $merchantId)->findOrFail($orderId);
+            $order = Order::where('merchant_id', $merchantId)->findOrFail($orderId);
+            if ($payment && $payment->order_id && $payment->order_id !== $order->id) {
+                abort(422, 'The payment does not belong to the specified order.');
+            }
         }
     }
 }

@@ -13,7 +13,9 @@ use App\Http\Resources\OrderResource;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Product;
+use App\Services\InventoryService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -21,6 +23,10 @@ use Illuminate\Validation\ValidationException;
 class OrdersController extends Controller
 {
     use InteractsWithMerchantScope;
+
+    public function __construct(
+        protected InventoryService $inventoryService
+    ) {}
 
     public function index(Request $request)
     {
@@ -56,9 +62,14 @@ class OrdersController extends Controller
         $data = $request->validated();
         $merchantId = $this->merchantIdForWrite($request, $data['merchant_id'] ?? null);
         $this->ensureCustomerBelongsToMerchant($merchantId, $data['customer_id']);
-        $items = $this->normalizeItems($merchantId, $data['items']);
 
-        $order = DB::transaction(function () use ($data, $items, $merchantId): Order {
+        $order = DB::transaction(function () use ($data, $merchantId, $request): Order {
+            $lockedProducts = $this->inventoryService->lockAndValidateProductsForOrder($merchantId, $data['items']);
+            $items = $this->normalizeItems($merchantId, $data['items'], $lockedProducts);
+
+            $isCancelled = ($data['status'] ?? null) === OrderStatus::Cancelled->value
+                || ($data['status'] ?? null) === OrderStatus::Cancelled;
+
             $order = Order::create([
                 'merchant_id' => $merchantId,
                 'customer_id' => $data['customer_id'],
@@ -68,9 +79,14 @@ class OrdersController extends Controller
                 'notes' => $data['notes'] ?? null,
                 'ordered_at' => $data['ordered_at'] ?? now(),
                 'total_amount' => collect($items)->sum('total_price'),
+                'inventory_restored' => $isCancelled,
             ]);
 
             $order->items()->createMany($items);
+
+            if (! $isCancelled) {
+                $this->inventoryService->deductStockForOrder($order, $items, $lockedProducts, $request->user()?->id);
+            }
 
             return $order;
         });
@@ -93,9 +109,22 @@ class OrdersController extends Controller
             $this->ensureCustomerBelongsToMerchant($merchantId, $data['customer_id']);
         }
 
-        DB::transaction(function () use ($data, $merchantId, $model): void {
+        if (isset($data['status'])) {
+            $newStatus = OrderStatus::from($data['status']);
+            $this->ensureValidStatusTransition($model->status, $newStatus);
+        }
+
+        DB::transaction(function () use ($data, $merchantId, $model, $request): void {
+            if (isset($data['status'])) {
+                $newStatus = OrderStatus::from($data['status']);
+                if ($newStatus === OrderStatus::Cancelled && ! $model->inventory_restored) {
+                    $this->inventoryService->restoreStockForOrder($model, 'Order cancelled: ' . $model->order_number, $request->user()?->id);
+                }
+            }
+
             if (isset($data['items'])) {
-                $items = $this->normalizeItems($merchantId, $data['items']);
+                $lockedProducts = $this->inventoryService->lockAndValidateProductsForOrder($merchantId, $data['items']);
+                $items = $this->normalizeItems($merchantId, $data['items'], $lockedProducts);
                 $model->items()->delete();
                 $model->items()->createMany($items);
                 $data['total_amount'] = collect($items)->sum('total_price');
@@ -114,7 +143,13 @@ class OrdersController extends Controller
 
         $this->ensureValidStatusTransition($model->status, $status);
 
-        $model->update(['status' => $status]);
+        DB::transaction(function () use ($model, $status, $request): void {
+            if ($status === OrderStatus::Cancelled && ! $model->inventory_restored) {
+                $this->inventoryService->restoreStockForOrder($model, 'Order cancelled: ' . $model->order_number, $request->user()?->id);
+            }
+
+            $model->update(['status' => $status]);
+        });
 
         return OrderResource::make($model->fresh()->load(['customer', 'items']));
     }
@@ -131,20 +166,25 @@ class OrdersController extends Controller
         Customer::where('merchant_id', $merchantId)->findOrFail($customerId);
     }
 
-    protected function normalizeItems(int $merchantId, array $items): array
+    protected function normalizeItems(int $merchantId, array $items, ?Collection $products = null): array
     {
-        return collect($items)->map(function (array $item) use ($merchantId): array {
-            $product = isset($item['product_id'])
-                ? Product::where('merchant_id', $merchantId)->findOrFail($item['product_id'])
-                : null;
+        return collect($items)->map(function (array $item) use ($merchantId, $products): array {
+            $product = null;
+            if (isset($item['product_id'])) {
+                $product = $products?->get((int) $item['product_id'])
+                    ?? Product::where('merchant_id', $merchantId)->findOrFail($item['product_id']);
+            }
+
+            $quantity = (int) $item['quantity'];
+            $unitPrice = isset($item['unit_price']) ? (float) $item['unit_price'] : (float) ($product?->price ?? 0);
 
             return [
                 'product_id' => $product?->id,
-                'product_name' => $item['product_name'] ?? $product?->name,
+                'product_name' => $item['product_name'] ?? $product?->name ?? 'Custom Item',
                 'sku' => $item['sku'] ?? $product?->sku,
-                'quantity' => $item['quantity'],
-                'unit_price' => $item['unit_price'],
-                'total_price' => $item['quantity'] * $item['unit_price'],
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'total_price' => $quantity * $unitPrice,
             ];
         })->all();
     }

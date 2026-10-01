@@ -2,11 +2,14 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\SanitizesMetadata;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class TransactionResource extends JsonResource
 {
+    use SanitizesMetadata;
+
     public function toArray(Request $request): array
     {
         return [
@@ -20,7 +23,7 @@ class TransactionResource extends JsonResource
             'amount' => $this->amount,
             'description' => $this->description,
             'transacted_at' => $this->transacted_at?->toISOString(),
-            'metadata' => $this->metadata,
+            'metadata' => $this->sanitizeMetadata($this->metadata),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];
