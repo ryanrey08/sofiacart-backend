@@ -30,6 +30,7 @@ class OrdersController extends Controller
 
     public function index(Request $request)
     {
+        $this->authorizeOperator($request);
         $query = Order::query()->with(['customer', 'items']);
         $this->scopeMerchant($query, $request);
 
@@ -59,6 +60,7 @@ class OrdersController extends Controller
 
     public function store(StoreOrderRequest $request): OrderResource
     {
+        $this->authorizeOperator($request, true);
         $data = $request->validated();
         $merchantId = $this->merchantIdForWrite($request, $data['merchant_id'] ?? null);
         $this->ensureCustomerBelongsToMerchant($merchantId, $data['customer_id']);
@@ -95,11 +97,13 @@ class OrdersController extends Controller
 
     public function show(Request $request, int $order): OrderResource
     {
+        $this->authorizeOperator($request);
         return OrderResource::make($this->scopeMerchant(Order::query()->with(['customer', 'items']), $request)->findOrFail($order));
     }
 
     public function update(UpdateOrderRequest $request, int $order): OrderResource
     {
+        $this->authorizeOperator($request, true);
         $data = $request->validated();
         $model = DB::transaction(function () use ($data, $order, $request): Order {
             $model = $this->scopeMerchant(Order::query(), $request)->lockForUpdate()->findOrFail($order);
@@ -120,6 +124,7 @@ class OrdersController extends Controller
 
     public function updateStatus(UpdateOrderStatusRequest $request, int $order): OrderResource
     {
+        $this->authorizeOperator($request, true);
         $status = OrderStatus::from($request->validated('status'));
 
         $model = DB::transaction(function () use ($order, $status, $request): Order {
@@ -138,6 +143,7 @@ class OrdersController extends Controller
 
     public function destroy(Request $request, int $order)
     {
+        $this->authorizeOperator($request, true);
         $this->scopeMerchant(Order::query(), $request)->findOrFail($order);
         abort(409, 'Orders cannot be deleted after inventory has been reserved.');
     }
@@ -145,6 +151,17 @@ class OrdersController extends Controller
     protected function ensureCustomerBelongsToMerchant(int $merchantId, int $customerId): void
     {
         Customer::where('merchant_id', $merchantId)->findOrFail($customerId);
+    }
+
+    private function authorizeOperator(Request $request, bool $write = false): void
+    {
+        if ($this->isAdmin($request)) {
+            abort_unless($request->user()->isActiveAdmin()
+                && $request->user()->currentAccessToken()?->can('admin')
+                && $request->user()->hasAdminPermission($write ? 'orders.manage' : 'orders.view'), 403);
+        } else {
+            $this->requiredMerchantId($request);
+        }
     }
 
     protected function normalizeItems(int $merchantId, array $items, ?Collection $products = null): array
