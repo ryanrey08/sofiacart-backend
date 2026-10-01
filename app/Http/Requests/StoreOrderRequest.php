@@ -2,10 +2,7 @@
 
 namespace App\Http\Requests;
 
-use App\Enums\OrderPaymentStatus;
-use App\Enums\OrderStatus;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class StoreOrderRequest extends FormRequest
 {
@@ -19,16 +16,21 @@ class StoreOrderRequest extends FormRequest
         return [
             'merchant_id' => ['nullable', 'integer', 'exists:merchants,id'],
             'customer_id' => ['required', 'integer', 'exists:customers,id'],
-            'status' => ['nullable', Rule::enum(OrderStatus::class)],
-            'payment_status' => ['nullable', Rule::enum(OrderPaymentStatus::class)],
+            'status' => ['prohibited'],
+            'payment_status' => ['prohibited'],
             'notes' => ['nullable', 'string'],
-            'ordered_at' => ['nullable', 'date'],
+            'ordered_at' => ['prohibited'],
             'items' => ['required', 'array', 'min:1'],
-            'items.*.product_id' => ['nullable', 'integer', 'exists:products,id'],
+            'items.*.product_id' => ['required_with:items.*.product_variant_id', 'nullable', 'integer', 'exists:products,id'],
+            'items.*.product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
             'items.*.product_name' => ['nullable', 'string', 'max:255'],
             'items.*.sku' => ['nullable', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
-            'items.*.unit_price' => ['required', 'numeric', 'min:0'],
+            'items.*.unit_price' => ['required_without:items.*.product_id', 'numeric', 'min:0'],
+            'subtotal' => ['prohibited'],
+            'discount_amount' => ['prohibited'],
+            'shipping_amount' => ['prohibited'],
+            'shipping_address' => ['prohibited'],
         ];
     }
 }

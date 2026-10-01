@@ -39,17 +39,16 @@ class PaymentRefundWorkflowTest extends TestCase
         // Record a completed payment covering the full order total
         $response = $this->postJson('/api/v1/payments', [
             'order_id' => $order->id,
-            'method' => 'card',
+            'gateway' => 'card',
             'status' => PaymentStatus::Completed->value,
             'amount' => 300.00,
-            'currency' => 'USD',
             'reference' => 'PAY-300-FULL',
             'paid_at' => now()->toIso8601String(),
         ]);
 
         $response->assertCreated()
             ->assertJsonPath('data.merchant_id', $merchant->id)
-            ->assertJsonPath('data.amount', 300.00)
+            ->assertJsonPath('data.amount', '300.00')
             ->assertJsonPath('data.status', PaymentStatus::Completed->value);
 
         // Order payment_status should now be 'paid'
@@ -68,10 +67,9 @@ class PaymentRefundWorkflowTest extends TestCase
 
         $response = $this->postJson('/api/v1/payments', [
             'order_id' => $order->id,
-            'method' => 'stripe',
+            'gateway' => 'stripe',
             'status' => PaymentStatus::Completed->value,
             'amount' => 100.00,
-            'currency' => 'USD',
             'reference' => 'PAY-SECURE-001',
             'metadata' => [
                 'public_charge_id' => 'ch_123456789',
@@ -92,7 +90,7 @@ class PaymentRefundWorkflowTest extends TestCase
         $response->assertJsonPath('data.metadata.gateway_auth', '[REDACTED]');
     }
 
-    public function test_refund_lifecycle_enforces_balance_and_updates_order_and_inventory(): void
+    public function test_refund_lifecycle_enforces_balance_without_restoring_unreturned_inventory(): void
     {
         $merchant = Merchant::factory()->create();
         $customer = Customer::factory()->create(['merchant_id' => $merchant->id]);
@@ -125,10 +123,9 @@ class PaymentRefundWorkflowTest extends TestCase
         // 2. Complete payment of $200.00
         $paymentResponse = $this->postJson('/api/v1/payments', [
             'order_id' => $orderId,
-            'method' => 'card',
+            'gateway' => 'card',
             'status' => PaymentStatus::Completed->value,
             'amount' => 200.00,
-            'currency' => 'USD',
             'reference' => 'PAY-REFUND-TEST',
         ]);
         $paymentResponse->assertCreated();
@@ -179,19 +176,11 @@ class PaymentRefundWorkflowTest extends TestCase
         $this->assertDatabaseHas('orders', [
             'id' => $orderId,
             'payment_status' => OrderPaymentStatus::Refunded->value,
-            'inventory_restored' => true,
+            'inventory_restored' => false,
         ]);
 
-        // Stock restored back to 10
-        $this->assertDatabaseHas('products', ['id' => $product->id, 'stock_quantity' => 10]);
-
-        // Inventory log recorded
-        $this->assertDatabaseHas('inventory_logs', [
-            'merchant_id' => $merchant->id,
-            'product_id' => $product->id,
-            'quantity_change' => 2,
-            'resulting_stock' => 10,
-        ]);
+        // A financial refund alone does not prove that physical items were returned.
+        $this->assertDatabaseHas('products', ['id' => $product->id, 'stock_quantity' => 8]);
     }
 
     public function test_transaction_cross_relation_integrity(): void

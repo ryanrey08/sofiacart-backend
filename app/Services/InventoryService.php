@@ -6,6 +6,7 @@ use App\Enums\ProductStatus;
 use App\Models\InventoryLog;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
@@ -38,8 +39,14 @@ class InventoryService
             ->lockForUpdate()
             ->get()
             ->keyBy('id');
+        $variants = ProductVariant::whereIn('id', collect($items)->pluck('product_variant_id')->filter()->unique()->sort())
+            ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        foreach ($products as $product) {
+            $product->setRelation('lockedVariants', $variants);
+        }
 
         $requestedQuantities = [];
+        $variantQuantities = [];
 
         foreach ($items as $index => $item) {
             if (empty($item['product_id'])) {
@@ -61,10 +68,19 @@ class InventoryService
                     "items.{$index}.product_id" => ["The product '{$product->name}' is not active and cannot be ordered."],
                 ]);
             }
+            $variant = null;
+            if (isset($item['product_variant_id'])) {
+                $variant = $variants->get((int) $item['product_variant_id']);
+                if (! $variant || $variant->product_id !== $pid) {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.product_variant_id" => ['The variant does not belong to the selected product.'],
+                    ]);
+                }
+            }
 
             if (isset($item['unit_price'])) {
                 $submittedPrice = round((float) $item['unit_price'], 2);
-                $actualPrice = round((float) $product->price, 2);
+                $actualPrice = round((float) ($variant?->price ?? $product->price), 2);
 
                 if (abs($submittedPrice - $actualPrice) > 0.001) {
                     throw ValidationException::withMessages([
@@ -74,7 +90,16 @@ class InventoryService
             }
 
             $quantity = (int) ($item['quantity'] ?? 1);
-            $requestedQuantities[$pid] = ($requestedQuantities[$pid] ?? 0) + $quantity;
+            if ($variant) {
+                $variantQuantities[$variant->id] = ($variantQuantities[$variant->id] ?? 0) + $quantity;
+            } else {
+                $requestedQuantities[$pid] = ($requestedQuantities[$pid] ?? 0) + $quantity;
+            }
+        }
+        foreach ($variantQuantities as $id => $quantity) {
+            if ($variants->get($id)->stock < $quantity) {
+                throw ValidationException::withMessages(['items' => ['Insufficient variant stock.']]);
+            }
         }
 
         foreach ($requestedQuantities as $pid => $totalQty) {
@@ -95,11 +120,31 @@ class InventoryService
     public function deductStockForOrder(Order $order, array $items, Collection $lockedProducts, ?int $userId = null): void
     {
         $quantities = [];
+        $variantQuantities = [];
         foreach ($items as $item) {
             if (! empty($item['product_id'])) {
                 $pid = (int) $item['product_id'];
-                $quantities[$pid] = ($quantities[$pid] ?? 0) + (int) $item['quantity'];
+                if (! empty($item['product_variant_id'])) {
+                    $vid = (int) $item['product_variant_id'];
+                    $variantQuantities[$vid] = ($variantQuantities[$vid] ?? 0) + (int) $item['quantity'];
+                } else {
+                    $quantities[$pid] = ($quantities[$pid] ?? 0) + (int) $item['quantity'];
+                }
             }
+        }
+        foreach ($variantQuantities as $id => $qty) {
+            $variant = $lockedProducts->first()->getRelation('lockedVariants')->get($id);
+            $variant->decrement('stock', $qty);
+            InventoryLog::create([
+                'merchant_id' => $order->merchant_id,
+                'product_id' => $variant->product_id,
+                'user_id' => $userId,
+                'reason' => 'Order created: '.$order->order_number,
+                'quantity_change' => -$qty,
+                'resulting_stock' => $variant->stock,
+                'notes' => 'Deducted variant #'.$id.' for order #'.$order->order_number,
+                'created_at' => now(),
+            ]);
         }
 
         foreach ($quantities as $pid => $qty) {
@@ -148,9 +193,29 @@ class InventoryService
                 ->get()
                 ->keyBy('id');
 
+            $variantQuantities = $order->items->whereNotNull('product_variant_id')
+                ->groupBy('product_variant_id')->map(fn ($items) => $items->sum('quantity'));
+            $variants = ProductVariant::whereIn('id', $variantQuantities->keys()->sort()->values())
+                ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            foreach ($variantQuantities as $id => $qty) {
+                if ($variant = $variants->get($id)) {
+                    $variant->increment('stock', $qty);
+                    InventoryLog::create([
+                        'merchant_id' => $order->merchant_id,
+                        'product_id' => $variant->product_id,
+                        'user_id' => $userId,
+                        'reason' => $reason,
+                        'quantity_change' => $qty,
+                        'resulting_stock' => $variant->stock,
+                        'notes' => 'Restored variant #'.$id.' for order #'.$order->order_number,
+                        'created_at' => now(),
+                    ]);
+                }
+            }
+
             $quantities = [];
             foreach ($order->items as $item) {
-                if ($item->product_id) {
+                if ($item->product_id && ! $item->product_variant_id) {
                     $pid = (int) $item->product_id;
                     $quantities[$pid] = ($quantities[$pid] ?? 0) + (int) $item->quantity;
                 }

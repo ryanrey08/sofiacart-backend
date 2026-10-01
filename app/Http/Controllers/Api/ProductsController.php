@@ -101,6 +101,10 @@ class ProductsController extends Controller
 
         try {
             DB::transaction(function () use ($data, $model, $paths, $request): void {
+                $model = Product::whereKey($model->id)->lockForUpdate()->firstOrFail();
+                if ($model->merchant_id !== $data['merchant_id'] && $model->orderItems()->exists()) {
+                    throw ValidationException::withMessages(['merchant_id' => ['Ordered products cannot be transferred between merchants.']]);
+                }
                 $data = $this->normaliseProductData($data);
                 unset($data['images'], $data['main_image_index'], $data['image_ids'], $data['main_image_id'], $data['variants']);
                 $model->update($data);
@@ -134,7 +138,11 @@ class ProductsController extends Controller
 
     public function destroy(Request $request, int $product)
     {
-        $this->scopeMerchant(Product::query(), $request)->findOrFail($product)->delete();
+        DB::transaction(function () use ($request, $product): void {
+            $model = $this->scopeMerchant(Product::query(), $request)->lockForUpdate()->findOrFail($product);
+            abort_if($model->orderItems()->exists(), 409, 'Products referenced by orders cannot be deleted.');
+            $model->delete();
+        });
 
         return response()->json(status: 204);
     }
@@ -224,9 +232,18 @@ class ProductsController extends Controller
             return;
         }
 
-        $product->variants()->delete();
+        $existing = $product->variants()->lockForUpdate()->get()->keyBy('sku');
+        $submitted = collect($variants)->pluck('sku');
+        foreach ($existing as $variant) {
+            if (! $submitted->contains($variant->sku)) {
+                if (\App\Models\OrderItem::where('product_variant_id', $variant->id)->exists()) {
+                    throw ValidationException::withMessages(['variants' => ['Ordered variants cannot be removed.']]);
+                }
+                $variant->delete();
+            }
+        }
         foreach ($variants as $index => $variant) {
-            $product->variants()->create([
+            $attributes = [
                 'sku' => $variant['sku'],
                 'color' => $variant['color'] ?? null,
                 'size' => $variant['size'] ?? null,
@@ -234,7 +251,12 @@ class ProductsController extends Controller
                 'price' => $variant['price'],
                 'stock' => $variant['stock'],
                 'sort_order' => $variant['sort_order'] ?? $index,
-            ]);
+            ];
+            if ($current = $existing->get($variant['sku'])) {
+                $current->update($attributes);
+            } else {
+                $product->variants()->create($attributes);
+            }
         }
     }
 
