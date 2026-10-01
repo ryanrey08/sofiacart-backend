@@ -13,6 +13,7 @@ use App\Http\Resources\RefundResource;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Refund;
+use App\Services\InventoryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -20,6 +21,11 @@ use Illuminate\Validation\ValidationException;
 class RefundsController extends Controller
 {
     use InteractsWithMerchantScope;
+
+    public function __construct(
+        protected InventoryService $inventoryService
+    ) {
+    }
 
     public function index(Request $request)
     {
@@ -51,6 +57,9 @@ class RefundsController extends Controller
                 $data['order_id'] ?? null,
             );
             $this->ensureRefundIsAllowed($payment, $data['amount']);
+            if (! isset($data['order_id']) && $order) {
+                $data['order_id'] = $order->id;
+            }
 
             $refund = Refund::create($data);
             $this->syncRefundedBalances($payment, $order);
@@ -105,7 +114,19 @@ class RefundsController extends Controller
 
     public function destroy(Request $request, int $refund)
     {
-        $this->scopeMerchant(Refund::query(), $request)->findOrFail($refund)->delete();
+        DB::transaction(function () use ($request, $refund): void {
+            $model = $this->scopeMerchant(Refund::query(), $request)->lockForUpdate()->findOrFail($refund);
+            $payment = Payment::where('merchant_id', $model->merchant_id)->lockForUpdate()->find($model->payment_id);
+            $order = $model->order_id
+                ? Order::where('merchant_id', $model->merchant_id)->lockForUpdate()->find($model->order_id)
+                : ($payment?->order_id ? Order::where('merchant_id', $model->merchant_id)->lockForUpdate()->find($payment->order_id) : null);
+
+            $model->delete();
+
+            if ($payment) {
+                $this->syncRefundedBalances($payment, $order);
+            }
+        });
 
         return response()->json(status: 204);
     }
@@ -121,6 +142,9 @@ class RefundsController extends Controller
             $order = Order::where('merchant_id', $merchantId)
                 ->lockForUpdate()
                 ->findOrFail($orderId);
+            if ($payment->order_id && $payment->order_id !== $order->id) {
+                abort(422, 'The payment does not belong to the specified order.');
+            }
         } elseif ($payment->order_id) {
             $order = Order::where('merchant_id', $merchantId)
                 ->lockForUpdate()
@@ -162,28 +186,29 @@ class RefundsController extends Controller
 
         if ($refundedAmount >= (float) $payment->amount) {
             $payment->update(['status' => PaymentStatus::Refunded]);
-
-            if ($order) {
-                $order->update(['payment_status' => OrderPaymentStatus::Refunded]);
-            }
-
-            return;
-        }
-
-        if ($refundedAmount > 0) {
+        } elseif ($refundedAmount > 0) {
             $payment->update(['status' => PaymentStatus::PartiallyRefunded]);
-
-            if ($order) {
-                $order->update(['payment_status' => OrderPaymentStatus::PartiallyRefunded]);
-            }
-
-            return;
+        } else {
+            $payment->update(['status' => PaymentStatus::Completed]);
         }
-
-        $payment->update(['status' => PaymentStatus::Completed]);
 
         if ($order) {
-            $order->update(['payment_status' => OrderPaymentStatus::Paid]);
+            $orderRefundedTotal = (float) Refund::where('order_id', $order->id)
+                ->where('status', RefundStatus::Processed)
+                ->sum('amount');
+            $orderTotal = (float) $order->total_amount;
+
+            if ($orderRefundedTotal >= $orderTotal && $orderTotal > 0) {
+                $order->update(['payment_status' => OrderPaymentStatus::Refunded]);
+                if (! $order->inventory_restored) {
+                    $this->inventoryService->restoreStockForOrder($order);
+                }
+            } elseif ($orderRefundedTotal > 0) {
+                $order->update(['payment_status' => OrderPaymentStatus::PartiallyRefunded]);
+            } else {
+                $hasCompletedPayment = Payment::where('order_id', $order->id)->where('status', PaymentStatus::Completed)->exists();
+                $order->update(['payment_status' => $hasCompletedPayment ? OrderPaymentStatus::Paid : OrderPaymentStatus::Unpaid]);
+            }
         }
     }
 }

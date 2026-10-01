@@ -19,6 +19,7 @@ class OrderResource extends JsonResource
             'total_amount' => $this->total_amount,
             'notes' => $this->notes,
             'ordered_at' => $this->ordered_at?->toISOString(),
+            'inventory_restored' => (bool) $this->inventory_restored,
             'customer' => CustomerResource::make($this->whenLoaded('customer')),
             'items' => OrderItemResource::collection($this->whenLoaded('items')),
             'created_at' => $this->created_at?->toISOString(),

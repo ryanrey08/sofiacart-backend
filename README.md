@@ -114,6 +114,8 @@ Supported product/category query params include `search`, `per_page`, and entity
 - `POST /api/v1/inventory/adjust`
 
 Orders support line items, pagination, status filters, payment-status filters, and date-range filters.
+Order creation validates active product statuses, validates submitted unit prices against current catalog prices server-side, locks rows in ascending ID order to prevent deadlocks, and prevents overselling within database transactions. Stock is atomically deducted and logged in `inventory_logs`.
+Order cancellation and full refund processing restore product stock exactly once using the `inventory_restored` flag to ensure idempotency.
 Inventory adjustments are atomic and create an inventory log entry with the resulting stock.
 
 ### Finance
@@ -126,6 +128,16 @@ Inventory adjustments are atomic and create an inventory log entry with the resu
 - `GET|PUT|PATCH|DELETE /api/v1/refunds/{refund}`
 
 Supported filters include `search`, `status`, `type`, `gateway`, `order_id`, and `payment_id` where applicable.
+Payment and refund mutations automatically synchronize the linked order's `payment_status` (`paid`, `partially_refunded`, `refunded`, `unpaid`).
+Refunds transactionally enforce refundable balances against completed payments.
+Sensitive payment gateway metadata (tokens, secrets, API keys, passwords, authorization credentials, CVV/card numbers) is automatically sanitized and redacted across all payment, transaction, and refund API responses.
+
+### Commerce workflow and unsupported features
+
+- **Workflow**: `Product -> Category -> Inventory -> Order -> Payment -> Transaction -> Refund` is fully verified, transactional, and merchant-isolated.
+- **Product Variants/Options**: Not supported by current database schema; products maintain a single SKU, price, and stock quantity.
+- **Category Hierarchy**: Parent/child categories are not supported by the current schema (no `parent_id` column); flat merchant-scoped categories are supported.
+- **Discounts/Shipping breakdown**: Order creation calculates totals based on validated line item quantities and unit prices; arbitrary discount/shipping tables are not in the existing schema.
 
 ### Reports
 
