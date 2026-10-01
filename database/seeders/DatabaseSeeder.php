@@ -10,7 +10,6 @@ use App\Enums\ProductStatus;
 use App\Enums\RefundStatus;
 use App\Enums\TransactionStatus;
 use App\Enums\TransactionType;
-use App\Models\Category;
 use App\Models\Customer;
 use App\Models\InventoryLog;
 use App\Models\Merchant;
@@ -30,9 +29,7 @@ class DatabaseSeeder extends Seeder
         Merchant::factory()->count(3)->create()->each(function (Merchant $merchant): void {
             $merchant->update(['status' => MerchantStatus::Verified]);
 
-            $categories = Category::factory()->count(3)->create([
-                'merchant_id' => $merchant->id,
-            ]);
+            $categories = CategorySeeder::seedForMerchant($merchant)->take(3);
 
             $products = collect();
             foreach ($categories as $category) {

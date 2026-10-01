@@ -97,11 +97,58 @@ Multipart registration accepts business details, store profile, owner informatio
 ### Catalog
 
 - `GET|POST /api/v1/categories`
+- `GET /api/v1/categories/stats`
+- `POST /api/v1/categories/bulk`
 - `GET|PUT|PATCH|DELETE /api/v1/categories/{category}`
+- `POST /api/v1/categories/{category}/image`
+- `PATCH /api/v1/categories/{category}/status`
 - `GET|POST /api/v1/products`
 - `GET|PUT|PATCH|DELETE /api/v1/products/{product}`
 
 Supported product/category query params include `search`, `per_page`, and entity-specific filters such as `status` and `category_id`.
+
+#### Category management
+
+Categories are scoped to the authenticated merchant's store (admins may pass `merchant_id`). Records outside the store return `404`, and `CategoryPolicy` enforces store ownership.
+
+| Method & path | Description |
+| --- | --- |
+| `GET /api/v1/categories` | Paginated list with `products_count`, `children_count`, and `parent`. |
+| `GET /api/v1/categories/stats` | `{ "data": { "total", "active", "inactive", "total_products" } }` |
+| `GET /api/v1/categories/{id}` | Category detail with parent, `image_url`, `products_count`, and timestamps. |
+| `POST /api/v1/categories` | Create a category (JSON or `multipart/form-data` with `image`). Returns `201`. |
+| `PUT\|PATCH /api/v1/categories/{id}` | Update a category. Send `remove_image=true` to delete the current image. |
+| `DELETE /api/v1/categories/{id}` | Delete a category. Its products and subcategories are kept but unassigned. Returns `204`. |
+| `POST /api/v1/categories/{id}/image` | Upload or replace the image (`multipart/form-data`, field `image`). |
+| `PATCH /api/v1/categories/{id}/status` | Set `is_active`, or toggle it when no body is sent. |
+| `POST /api/v1/categories/bulk` | `{ "action": "delete\|activate\|deactivate", "ids": [1, 2] }` returns `{ "data": { "action", "affected", "ids" } }`. All IDs must belong to the store or the request fails with `422`. |
+
+List query params:
+
+- `search`: matches name, slug, or description.
+- `status`: `active` or `inactive`.
+- `parent_id`: a category ID, or `none` for top-level categories.
+- `sort`: `name_asc`, `name_desc`, `products_desc`, `products_asc`, `newest`, or `oldest`. Default: `sort_order` ascending, then name.
+- `per_page`: default `10` (UI uses 10/20/50), maximum `100`; `page` selects the page.
+- `merchant_id`: admin only, also accepted by `stats`.
+
+Create/update fields:
+
+| Field | Rules |
+| --- | --- |
+| `name` | Required on create, max 255. |
+| `slug` | Lowercase letters, numbers, and hyphens; unique per store. Generated from `name` when omitted (`home-living`, `home-living-2`, ...). |
+| `parent_id` | Optional category in the same store; cannot be the category itself or one of its subcategories. |
+| `description` | Rich text HTML, max 500 visible characters. Unsafe markup (scripts, event handlers, `javascript:` links) is stripped. |
+| `image` | PNG/JPG/WEBP, max 2 MB (recommended 600x400). Stored on the `public` disk; responses include `image_path` and `image_url`. |
+| `sort_order` | Integer >= 0; lower values are listed first. |
+| `is_active`, `show_in_nav` | Booleans (`true`/`false`/`1`/`0`; multipart strings are accepted). Default `true`. |
+| `meta_title` | Optional, max 255 (recommended 50-60 characters). |
+| `meta_description` | Optional, max 500 (recommended 150-160 characters). |
+
+PHP does not parse multipart bodies for `PUT`/`PATCH`. To send an image while updating, use `POST /api/v1/categories/{id}/image`, or `POST` with `_method=PUT`.
+
+`php artisan db:seed --class=CategorySeeder` seeds the mockup categories (Electronics, Apparel, Home & Living, and others, with subcategories) for every merchant.
 
 ### Sales
 
@@ -136,7 +183,7 @@ Sensitive payment gateway metadata (tokens, secrets, API keys, passwords, author
 
 - **Workflow**: `Product -> Category -> Inventory -> Order -> Payment -> Transaction -> Refund` is fully verified, transactional, and merchant-isolated.
 - **Product Variants/Options**: Not supported by current database schema; products maintain a single SKU, price, and stock quantity.
-- **Category Hierarchy**: Parent/child categories are not supported by the current schema (no `parent_id` column); flat merchant-scoped categories are supported.
+- **Category Hierarchy**: Categories support an optional `parent_id` within the same merchant store.
 - **Discounts/Shipping breakdown**: Order creation calculates totals based on validated line item quantities and unit prices; arbitrary discount/shipping tables are not in the existing schema.
 
 ### Reports
@@ -236,6 +283,7 @@ Still dependent on external integrations:
 - Store logos accept JPG/PNG up to 2 MB.
 - Optional store banners accept JPG/PNG up to 5 MB.
 - Product image uploads accept JPG/PNG up to 5 MB per image.
+- Category image uploads accept PNG/JPG/WEBP up to 2 MB.
 
 # Orders and returns (merchant back office)
 
