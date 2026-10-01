@@ -19,8 +19,8 @@ use App\Http\Controllers\Api\OrdersController;
 use App\Http\Controllers\Api\PaymentsController;
 use App\Http\Controllers\Api\ProductsController;
 use App\Http\Controllers\Api\RefundsController;
-use App\Http\Controllers\Api\ReturnRequestsController;
 use App\Http\Controllers\Api\ReportsController;
+use App\Http\Controllers\Api\ReturnRequestsController;
 use App\Http\Controllers\Api\TransactionsController;
 use Illuminate\Support\Facades\Route;
 
@@ -52,7 +52,11 @@ Route::prefix('merchant')->group(function (): void {
 });
 
 Route::middleware('auth:sanctum')->prefix('v1')->group(function (): void {
+    Route::get('categories/stats', [CategoryController::class, 'stats']);
+    Route::post('categories/bulk', [CategoryController::class, 'bulk']);
     Route::apiResource('categories', CategoryController::class);
+    Route::post('categories/{category}/image', [CategoryController::class, 'uploadImage']);
+    Route::patch('categories/{category}/status', [CategoryController::class, 'updateStatus']);
     Route::apiResource('products', ProductsController::class);
     Route::apiResource('customers', CustomerController::class);
     Route::apiResource('orders', OrdersController::class);
