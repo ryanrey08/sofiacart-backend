@@ -67,26 +67,25 @@ class OrdersController extends Controller
             $lockedProducts = $this->inventoryService->lockAndValidateProductsForOrder($merchantId, $data['items']);
             $items = $this->normalizeItems($merchantId, $data['items'], $lockedProducts);
 
-            $isCancelled = ($data['status'] ?? null) === OrderStatus::Cancelled->value
-                || ($data['status'] ?? null) === OrderStatus::Cancelled;
-
             $order = Order::create([
                 'merchant_id' => $merchantId,
                 'customer_id' => $data['customer_id'],
                 'order_number' => 'ORD-'.now()->format('YmdHis').'-'.Str::upper(Str::random(4)),
-                'status' => $data['status'] ?? OrderStatus::Pending,
-                'payment_status' => $data['payment_status'] ?? OrderPaymentStatus::Unpaid,
+                'status' => OrderStatus::Pending,
+                'payment_status' => OrderPaymentStatus::Unpaid,
                 'notes' => $data['notes'] ?? null,
-                'ordered_at' => $data['ordered_at'] ?? now(),
+                'ordered_at' => now(),
                 'total_amount' => collect($items)->sum('total_price'),
-                'inventory_restored' => $isCancelled,
+                'subtotal' => collect($items)->sum('total_price'),
+                'discount_amount' => 0,
+                'shipping_amount' => 0,
+                'shipping_address' => Customer::where('merchant_id', $merchantId)->findOrFail($data['customer_id'])->address,
+                'inventory_restored' => false,
             ]);
 
             $order->items()->createMany($items);
 
-            if (! $isCancelled) {
-                $this->inventoryService->deductStockForOrder($order, $items, $lockedProducts, $request->user()?->id);
-            }
+            $this->inventoryService->deductStockForOrder($order, $items, $lockedProducts, $request->user()?->id);
 
             return $order;
         });
@@ -101,36 +100,19 @@ class OrdersController extends Controller
 
     public function update(UpdateOrderRequest $request, int $order): OrderResource
     {
-        $model = $this->scopeMerchant(Order::query()->with(['customer', 'items']), $request)->findOrFail($order);
         $data = $request->validated();
-        $merchantId = $this->merchantIdForWrite($request, $data['merchant_id'] ?? $model->merchant_id);
-
-        if (isset($data['customer_id'])) {
-            $this->ensureCustomerBelongsToMerchant($merchantId, $data['customer_id']);
-        }
-
-        if (isset($data['status'])) {
-            $newStatus = OrderStatus::from($data['status']);
-            $this->ensureValidStatusTransition($model->status, $newStatus);
-        }
-
-        DB::transaction(function () use ($data, $merchantId, $model, $request): void {
+        $model = DB::transaction(function () use ($data, $order, $request): Order {
+            $model = $this->scopeMerchant(Order::query(), $request)->lockForUpdate()->findOrFail($order);
             if (isset($data['status'])) {
                 $newStatus = OrderStatus::from($data['status']);
+                $this->ensureValidStatusTransition($model->status, $newStatus, $model->payment_status);
                 if ($newStatus === OrderStatus::Cancelled && ! $model->inventory_restored) {
                     $this->inventoryService->restoreStockForOrder($model, 'Order cancelled: ' . $model->order_number, $request->user()?->id);
                 }
             }
 
-            if (isset($data['items'])) {
-                $lockedProducts = $this->inventoryService->lockAndValidateProductsForOrder($merchantId, $data['items']);
-                $items = $this->normalizeItems($merchantId, $data['items'], $lockedProducts);
-                $model->items()->delete();
-                $model->items()->createMany($items);
-                $data['total_amount'] = collect($items)->sum('total_price');
-            }
-
             $model->update($data);
+            return $model;
         });
 
         return OrderResource::make($model->fresh()->load(['customer', 'items']));
@@ -138,17 +120,17 @@ class OrdersController extends Controller
 
     public function updateStatus(UpdateOrderStatusRequest $request, int $order): OrderResource
     {
-        $model = $this->scopeMerchant(Order::query()->with(['customer', 'items']), $request)->findOrFail($order);
         $status = OrderStatus::from($request->validated('status'));
 
-        $this->ensureValidStatusTransition($model->status, $status);
-
-        DB::transaction(function () use ($model, $status, $request): void {
+        $model = DB::transaction(function () use ($order, $status, $request): Order {
+            $model = $this->scopeMerchant(Order::query(), $request)->lockForUpdate()->findOrFail($order);
+            $this->ensureValidStatusTransition($model->status, $status, $model->payment_status);
             if ($status === OrderStatus::Cancelled && ! $model->inventory_restored) {
                 $this->inventoryService->restoreStockForOrder($model, 'Order cancelled: ' . $model->order_number, $request->user()?->id);
             }
 
             $model->update(['status' => $status]);
+            return $model;
         });
 
         return OrderResource::make($model->fresh()->load(['customer', 'items']));
@@ -156,9 +138,8 @@ class OrdersController extends Controller
 
     public function destroy(Request $request, int $order)
     {
-        $this->scopeMerchant(Order::query(), $request)->findOrFail($order)->delete();
-
-        return response()->json(status: 204);
+        $this->scopeMerchant(Order::query(), $request)->findOrFail($order);
+        abort(409, 'Orders cannot be deleted after inventory has been reserved.');
     }
 
     protected function ensureCustomerBelongsToMerchant(int $merchantId, int $customerId): void
@@ -176,12 +157,16 @@ class OrdersController extends Controller
             }
 
             $quantity = (int) $item['quantity'];
-            $unitPrice = isset($item['unit_price']) ? (float) $item['unit_price'] : (float) ($product?->price ?? 0);
+            $variant = isset($item['product_variant_id'])
+                ? $product?->getRelation('lockedVariants')->get((int) $item['product_variant_id'])
+                : null;
+            $unitPrice = (float) ($variant?->price ?? $product?->price ?? $item['unit_price'] ?? 0);
 
             return [
                 'product_id' => $product?->id,
-                'product_name' => $item['product_name'] ?? $product?->name ?? 'Custom Item',
-                'sku' => $item['sku'] ?? $product?->sku,
+                'product_variant_id' => $item['product_variant_id'] ?? null,
+                'product_name' => $product?->name ?? $item['product_name'] ?? 'Custom Item',
+                'sku' => $variant?->sku ?? $product?->sku ?? $item['sku'] ?? null,
                 'quantity' => $quantity,
                 'unit_price' => $unitPrice,
                 'total_price' => $quantity * $unitPrice,
@@ -189,10 +174,14 @@ class OrdersController extends Controller
         })->all();
     }
 
-    protected function ensureValidStatusTransition(OrderStatus $currentStatus, OrderStatus $newStatus): void
+    protected function ensureValidStatusTransition(OrderStatus $currentStatus, OrderStatus $newStatus, OrderPaymentStatus $paymentStatus): void
     {
         if ($currentStatus === $newStatus) {
             return;
+        }
+        if (($newStatus === OrderStatus::Completed && $paymentStatus !== OrderPaymentStatus::Paid)
+            || ($newStatus === OrderStatus::Cancelled && $paymentStatus !== OrderPaymentStatus::Unpaid)) {
+            throw ValidationException::withMessages(['status' => ['Payment must be settled before fulfillment, or unpaid before cancellation.']]);
         }
 
         $allowedTransitions = [

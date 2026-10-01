@@ -13,6 +13,7 @@ use App\Http\Resources\PaymentResource;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Refund;
+use App\Models\ReturnRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -68,6 +69,9 @@ class PaymentsController extends Controller
         $this->ensureOrderBelongsToMerchant($merchantId, $data['order_id'] ?? $model->order_id);
 
         $paymentModel = DB::transaction(function () use ($model, $data, $merchantId): Payment {
+            $model = Payment::whereKey($model->id)->lockForUpdate()->firstOrFail();
+            abort_if(ReturnRequest::whereHas('refund', fn ($query) => $query->where('payment_id', $model->id))->exists(),
+                409, 'A processed return uses this payment.');
             $originalOrderId = $model->order_id;
             $model->update($data);
 
@@ -89,6 +93,9 @@ class PaymentsController extends Controller
         $orderId = $model->order_id;
 
         DB::transaction(function () use ($model, $merchantId, $orderId): void {
+            $model = Payment::whereKey($model->id)->lockForUpdate()->firstOrFail();
+            abort_if(ReturnRequest::whereHas('refund', fn ($query) => $query->where('payment_id', $model->id))->exists(),
+                409, 'A processed return uses this payment.');
             $model->delete();
             $this->syncOrderPaymentStatus($merchantId, $orderId);
         });

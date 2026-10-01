@@ -13,7 +13,7 @@ use App\Http\Resources\RefundResource;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Refund;
-use App\Services\InventoryService;
+use App\Models\ReturnRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -21,11 +21,6 @@ use Illuminate\Validation\ValidationException;
 class RefundsController extends Controller
 {
     use InteractsWithMerchantScope;
-
-    public function __construct(
-        protected InventoryService $inventoryService
-    ) {
-    }
 
     public function index(Request $request)
     {
@@ -81,6 +76,7 @@ class RefundsController extends Controller
             $model = $this->scopeMerchant(Refund::query(), $request)
                 ->lockForUpdate()
                 ->findOrFail($refund);
+            abort_if(ReturnRequest::where('refund_id', $model->id)->exists(), 409, 'A processed return uses this refund.');
             $originalPayment = Payment::where('merchant_id', $model->merchant_id)
                 ->lockForUpdate()
                 ->findOrFail($model->payment_id);
@@ -116,6 +112,7 @@ class RefundsController extends Controller
     {
         DB::transaction(function () use ($request, $refund): void {
             $model = $this->scopeMerchant(Refund::query(), $request)->lockForUpdate()->findOrFail($refund);
+            abort_if(ReturnRequest::where('refund_id', $model->id)->exists(), 409, 'A processed return uses this refund.');
             $payment = Payment::where('merchant_id', $model->merchant_id)->lockForUpdate()->find($model->payment_id);
             $order = $model->order_id
                 ? Order::where('merchant_id', $model->merchant_id)->lockForUpdate()->find($model->order_id)
@@ -200,9 +197,6 @@ class RefundsController extends Controller
 
             if ($orderRefundedTotal >= $orderTotal && $orderTotal > 0) {
                 $order->update(['payment_status' => OrderPaymentStatus::Refunded]);
-                if (! $order->inventory_restored) {
-                    $this->inventoryService->restoreStockForOrder($order);
-                }
             } elseif ($orderRefundedTotal > 0) {
                 $order->update(['payment_status' => OrderPaymentStatus::PartiallyRefunded]);
             } else {

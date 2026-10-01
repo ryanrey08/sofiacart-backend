@@ -25,6 +25,10 @@ class Order extends Model
         'notes',
         'ordered_at',
         'inventory_restored',
+        'shipping_address',
+        'subtotal',
+        'discount_amount',
+        'shipping_amount',
     ];
 
     protected function casts(): array
@@ -33,6 +37,9 @@ class Order extends Model
             'status' => OrderStatus::class,
             'payment_status' => OrderPaymentStatus::class,
             'total_amount' => 'decimal:2',
+            'subtotal' => 'decimal:2',
+            'discount_amount' => 'decimal:2',
+            'shipping_amount' => 'decimal:2',
             'ordered_at' => 'datetime',
             'inventory_restored' => 'boolean',
         ];

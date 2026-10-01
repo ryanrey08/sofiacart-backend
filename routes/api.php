@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\OrdersController;
 use App\Http\Controllers\Api\PaymentsController;
 use App\Http\Controllers\Api\ProductsController;
 use App\Http\Controllers\Api\RefundsController;
+use App\Http\Controllers\Api\ReturnRequestsController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\TransactionsController;
 use Illuminate\Support\Facades\Route;
@@ -56,6 +57,11 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function (): void {
     Route::apiResource('customers', CustomerController::class);
     Route::apiResource('orders', OrdersController::class);
     Route::patch('orders/{order}/status', [OrdersController::class, 'updateStatus']);
+    Route::get('return-requests', [ReturnRequestsController::class, 'index']);
+    Route::post('return-requests', [ReturnRequestsController::class, 'store']);
+    Route::get('return-requests/{returnRequest}', [ReturnRequestsController::class, 'show']);
+    Route::patch('return-requests/{returnRequest}', [ReturnRequestsController::class, 'review']);
+    Route::get('return-requests/{returnRequest}/evidence/{index}', [ReturnRequestsController::class, 'evidence']);
 
     Route::get('inventory/logs', [InventoryController::class, 'index']);
     Route::post('inventory/adjust', [InventoryController::class, 'adjust']);

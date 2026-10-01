@@ -44,10 +44,10 @@ class OrderWorkflowTest extends TestCase
         $response->assertCreated()
             ->assertJsonPath('data.merchant_id', $merchant->id)
             ->assertJsonPath('data.customer_id', $customer->id)
-            ->assertJsonPath('data.total_amount', 450.00)
+            ->assertJsonPath('data.total_amount', '450.00')
             ->assertJsonPath('data.items.0.quantity', 3)
-            ->assertJsonPath('data.items.0.unit_price', 150.00)
-            ->assertJsonPath('data.items.0.subtotal', 450.00);
+            ->assertJsonPath('data.items.0.unit_price', '150.00')
+            ->assertJsonPath('data.items.0.total_price', '450.00');
 
         $orderId = $response->json('data.id');
 
@@ -71,7 +71,7 @@ class OrderWorkflowTest extends TestCase
             'product_id' => $product->id,
             'quantity' => 3,
             'unit_price' => 150.00,
-            'subtotal' => 450.00,
+            'total_price' => 450.00,
         ]);
     }
 
@@ -278,6 +278,6 @@ class OrderWorkflowTest extends TestCase
                     'unit_price' => 80.00,
                 ],
             ],
-        ])->assertNotFound();
+        ])->assertUnprocessable()->assertJsonValidationErrors(['items.0.product_id']);
     }
 }
