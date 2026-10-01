@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\OrderPaymentStatus;
 use App\Enums\OrderStatus;
+use App\Enums\PaymentStatus;
 use App\Enums\RefundStatus;
 use App\Http\Controllers\Concerns\InteractsWithMerchantScope;
 use App\Http\Controllers\Controller;
@@ -52,7 +53,7 @@ class ReturnRequestsController extends Controller
             'order_id' => ['required', 'integer', 'exists:orders,id'],
             'customer_id' => ['required', 'integer', 'exists:customers,id'],
             'reason' => ['required', 'string', 'max:255'],
-            'notes' => ['nullable', 'string', 'max:5000'],
+            'notes' => ['required', 'string', 'max:5000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.order_item_id' => ['required', 'integer', 'distinct'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
@@ -111,7 +112,7 @@ class ReturnRequestsController extends Controller
                     'customer_id' => $order->customer_id,
                     'status' => 'pending',
                     'reason' => $data['reason'],
-                    'notes' => $data['notes'] ?? null,
+                    'notes' => $data['notes'],
                     'amount' => round(collect($items)->sum('amount'), 2),
                     'evidence' => $evidence,
                 ]);
@@ -132,7 +133,7 @@ class ReturnRequestsController extends Controller
         $this->authorizeOperator($request, 'payments.refund');
         $data = $request->validate([
             'status' => ['required', Rule::in(['approved', 'rejected', 'processed'])],
-            'refund_id' => ['required_if:status,processed', 'prohibited_unless:status,processed', 'integer'],
+            'refund_id' => ['nullable', 'prohibited_unless:status,processed', 'integer'],
         ]);
         $return = DB::transaction(function () use ($request, $returnRequest, $data): ReturnRequest {
             $candidate = $this->scopeMerchant(ReturnRequest::query(), $request)->findOrFail($returnRequest);
@@ -148,13 +149,24 @@ class ReturnRequestsController extends Controller
             }
 
             if ($data['status'] === 'processed') {
-                $refund = Refund::where('merchant_id', $return->merchant_id)
-                    ->where('order_id', $order->id)->where('status', RefundStatus::Processed)
-                    ->lockForUpdate()->findOrFail($data['refund_id']);
-                if ((int) round((float) $refund->amount * 100) !== (int) round((float) $return->amount * 100)
-                    || ReturnRequest::where('refund_id', $refund->id)->exists()
-                    || $refund->payment?->order_id !== $order->id) {
-                    throw ValidationException::withMessages(['refund_id' => ['A unique processed refund for this order and amount is required.']]);
+                if ((float) $return->amount > 0) {
+                    if (empty($data['refund_id'])) {
+                        throw ValidationException::withMessages(['refund_id' => ['A processed refund is required.']]);
+                    }
+                    $refund = Refund::where('merchant_id', $return->merchant_id)
+                        ->where('order_id', $order->id)->where('status', RefundStatus::Processed)
+                        ->lockForUpdate()->findOrFail($data['refund_id']);
+                    if ((int) round((float) $refund->amount * 100) !== (int) round((float) $return->amount * 100)
+                        || ReturnRequest::where('refund_id', $refund->id)->exists()
+                        || $refund->payment?->order_id !== $order->id
+                        || ! in_array($refund->payment?->status, [
+                            PaymentStatus::Completed, PaymentStatus::PartiallyRefunded, PaymentStatus::Refunded,
+                        ], true)) {
+                        throw ValidationException::withMessages(['refund_id' => ['A unique processed refund for this order and amount is required.']]);
+                    }
+                    $return->refund_id = $refund->id;
+                } elseif (! empty($data['refund_id'])) {
+                    throw ValidationException::withMessages(['refund_id' => ['No refund is needed for a zero-value return.']]);
                 }
 
                 $quantities = [];
@@ -183,23 +195,22 @@ class ReturnRequestsController extends Controller
                             'created_at' => now(),
                         ]);
                     }
-                    ksort($variantQuantities);
-                    foreach ($variantQuantities as $id => $quantity) {
-                        $variant = ProductVariant::whereHas('product', fn ($query) => $query->where('merchant_id', $order->merchant_id))
-                            ->lockForUpdate()->find($id);
-                        if ($variant) {
-                            $variant->increment('stock', $quantity);
-                            InventoryLog::create([
-                                'merchant_id' => $order->merchant_id, 'product_id' => $variant->product_id,
-                                'user_id' => $request->user()?->id, 'reason' => 'Return processed: '.$return->id,
-                                'quantity_change' => $quantity, 'resulting_stock' => $variant->stock,
-                                'notes' => 'Restored variant #'.$id.' for order #'.$order->order_number,
-                                'created_at' => now(),
-                            ]);
-                        }
+                }
+                ksort($variantQuantities);
+                foreach ($variantQuantities as $id => $quantity) {
+                    $variant = ProductVariant::whereHas('product', fn ($query) => $query->where('merchant_id', $order->merchant_id))
+                        ->lockForUpdate()->find($id);
+                    if ($variant) {
+                        $variant->increment('stock', $quantity);
+                        InventoryLog::create([
+                            'merchant_id' => $order->merchant_id, 'product_id' => $variant->product_id,
+                            'user_id' => $request->user()?->id, 'reason' => 'Return processed: '.$return->id,
+                            'quantity_change' => $quantity, 'resulting_stock' => $variant->stock,
+                            'notes' => 'Restored variant #'.$id.' for order #'.$order->order_number,
+                            'created_at' => now(),
+                        ]);
                     }
                 }
-                $return->refund_id = $refund->id;
             }
             $return->status = $data['status'];
             $return->save();

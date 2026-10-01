@@ -14,6 +14,8 @@ use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Refund;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -46,14 +48,14 @@ class ReturnRequestWorkflowTest extends TestCase
 
         Order::findOrFail($orderId)->update(['payment_status' => OrderPaymentStatus::Unpaid]);
         $this->postJson('/api/v1/return-requests', [
-            'order_id' => $orderId, 'customer_id' => $customer->id, 'reason' => 'Damaged',
+            'order_id' => $orderId, 'customer_id' => $customer->id, 'reason' => 'Damaged', 'notes' => 'Broken on arrival',
             'items' => [['order_item_id' => $itemId, 'quantity' => 1]],
         ])->assertUnprocessable();
 
         Order::findOrFail($orderId)->update(['payment_status' => OrderPaymentStatus::Paid]);
 
         $payload = [
-            'order_id' => $orderId, 'customer_id' => $customer->id, 'reason' => 'Damaged',
+            'order_id' => $orderId, 'customer_id' => $customer->id, 'reason' => 'Damaged', 'notes' => 'Broken on arrival',
             'items' => [['order_item_id' => $itemId, 'quantity' => 2]],
         ];
         $returnId = $this->postJson('/api/v1/return-requests', $payload)->assertCreated()
@@ -92,7 +94,7 @@ class ReturnRequestWorkflowTest extends TestCase
             'product_name' => 'Example', 'quantity' => 2, 'unit_price' => 25, 'total_price' => 50,
         ]);
         $payload = [
-            'order_id' => $order->id, 'customer_id' => $customer->id, 'reason' => 'Wrong size',
+            'order_id' => $order->id, 'customer_id' => $customer->id, 'reason' => 'Wrong size', 'notes' => 'Item is too large',
             'items' => [['order_item_id' => $item->id, 'quantity' => 3]],
         ];
         Sanctum::actingAs($merchant->user);
@@ -124,6 +126,9 @@ class ReturnRequestWorkflowTest extends TestCase
         ];
         $this->postJson('/api/v1/orders', $payload + ['payment_status' => 'paid'])->assertUnprocessable();
         $this->postJson('/api/v1/orders', array_replace($payload, ['items' => [[
+            'product_variant_id' => $variant->id, 'quantity' => 1,
+        ]]]))->assertUnprocessable()->assertJsonValidationErrors(['items.0.product_id']);
+        $this->postJson('/api/v1/orders', array_replace($payload, ['items' => [[
             'product_id' => $product->id, 'product_variant_id' => $variant->id,
             'quantity' => 2, 'unit_price' => 1,
         ]]]))->assertUnprocessable();
@@ -133,6 +138,12 @@ class ReturnRequestWorkflowTest extends TestCase
             ->assertJsonPath('data.items.0.product_variant_id', $variant->id)->json('data.id');
         $this->assertEquals(3, $variant->fresh()->stock);
         $this->assertEquals(10, $product->fresh()->stock_quantity);
+        $this->patchJson("/api/v1/products/{$product->id}", ['variants' => [[
+            'sku' => $variant->sku, 'price' => 125, 'stock' => 3,
+        ]]])->assertOk();
+        $this->assertEquals($variant->id, $product->fresh()->variants()->firstOrFail()->id);
+        $this->patchJson("/api/v1/products/{$product->id}", ['variants' => []])->assertUnprocessable();
+        $this->deleteJson("/api/v1/products/{$product->id}")->assertStatus(409);
         $this->patchJson("/api/v1/orders/{$id}", ['items' => $payload['items']])->assertUnprocessable();
         $this->patchJson("/api/v1/orders/{$id}", ['payment_status' => 'paid'])->assertUnprocessable();
         $this->deleteJson("/api/v1/orders/{$id}")->assertStatus(409);
@@ -140,5 +151,69 @@ class ReturnRequestWorkflowTest extends TestCase
         $this->patchJson("/api/v1/orders/{$id}/status", ['status' => 'cancelled'])->assertOk();
         $this->patchJson("/api/v1/orders/{$id}/status", ['status' => 'cancelled'])->assertOk();
         $this->assertEquals(5, $variant->fresh()->stock);
+    }
+
+    public function test_processing_a_variant_only_return_restocks_the_variant_once(): void
+    {
+        $merchant = Merchant::factory()->create();
+        $customer = Customer::factory()->create(['merchant_id' => $merchant->id]);
+        $product = Product::factory()->create(['merchant_id' => $merchant->id]);
+        $variant = $product->variants()->create(['sku' => 'VAR-RETURN-2', 'price' => 25, 'stock' => 3]);
+        $order = Order::factory()->create([
+            'merchant_id' => $merchant->id, 'customer_id' => $customer->id,
+            'status' => OrderStatus::Completed, 'payment_status' => OrderPaymentStatus::Paid,
+            'ordered_at' => now(), 'total_amount' => 50,
+        ]);
+        $item = $order->items()->create([
+            'product_id' => $product->id, 'product_variant_id' => $variant->id,
+            'product_name' => $product->name, 'quantity' => 2, 'unit_price' => 25, 'total_price' => 50,
+        ]);
+        $payment = Payment::create([
+            'merchant_id' => $merchant->id, 'order_id' => $order->id, 'reference' => 'pay-variant-2',
+            'gateway' => 'manual', 'status' => PaymentStatus::Completed, 'amount' => 50,
+        ]);
+        Sanctum::actingAs($merchant->user);
+        $id = $this->postJson('/api/v1/return-requests', [
+            'order_id' => $order->id, 'customer_id' => $customer->id, 'reason' => 'Wrong size', 'notes' => 'Item is too large',
+            'items' => [['order_item_id' => $item->id, 'quantity' => 1]],
+        ])->assertCreated()->json('data.id');
+        $this->patchJson("/api/v1/return-requests/{$id}", ['status' => 'approved'])->assertOk();
+        $refund = Refund::create([
+            'merchant_id' => $merchant->id, 'order_id' => $order->id, 'payment_id' => $payment->id,
+            'reference' => 'refund-variant-2', 'status' => RefundStatus::Processed, 'amount' => 25,
+        ]);
+        $this->patchJson("/api/v1/return-requests/{$id}", [
+            'status' => 'processed', 'refund_id' => $refund->id,
+        ])->assertOk();
+        $this->assertEquals(4, $variant->fresh()->stock);
+        $this->assertEquals($product->stock_quantity, $product->fresh()->stock_quantity);
+    }
+
+    public function test_evidence_is_private_and_only_available_to_the_owning_merchant(): void
+    {
+        Storage::fake('local');
+        $merchant = Merchant::factory()->create();
+        $other = Merchant::factory()->create();
+        $customer = Customer::factory()->create(['merchant_id' => $merchant->id]);
+        $order = Order::factory()->create([
+            'merchant_id' => $merchant->id, 'customer_id' => $customer->id,
+            'status' => OrderStatus::Completed, 'payment_status' => OrderPaymentStatus::Paid,
+            'ordered_at' => now(),
+        ]);
+        $item = $order->items()->create([
+            'product_name' => 'Example', 'quantity' => 1, 'unit_price' => 50, 'total_price' => 50,
+        ]);
+        Sanctum::actingAs($merchant->user);
+        $response = $this->withHeaders(['Accept' => 'application/json'])->post('/api/v1/return-requests', [
+            'order_id' => $order->id, 'customer_id' => $customer->id, 'reason' => 'Damaged', 'notes' => 'Broken on arrival',
+            'items' => [['order_item_id' => $item->id, 'quantity' => 1]],
+            'evidence' => [UploadedFile::fake()->image('proof.jpg')],
+        ])->assertCreated();
+        $id = $response->json('data.id');
+        $response->assertJsonPath('data.evidence.0.name', 'proof.jpg')
+            ->assertDontSee('return-evidence/', false);
+        $this->get("/api/v1/return-requests/{$id}/evidence/0")->assertOk();
+        Sanctum::actingAs($other->user);
+        $this->get("/api/v1/return-requests/{$id}/evidence/0")->assertNotFound();
     }
 }

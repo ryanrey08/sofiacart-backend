@@ -21,7 +21,7 @@ class StoreOrderRequest extends FormRequest
             'notes' => ['nullable', 'string'],
             'ordered_at' => ['prohibited'],
             'items' => ['required', 'array', 'min:1'],
-            'items.*.product_id' => ['nullable', 'integer', 'exists:products,id'],
+            'items.*.product_id' => ['required_with:items.*.product_variant_id', 'nullable', 'integer', 'exists:products,id'],
             'items.*.product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
             'items.*.product_name' => ['nullable', 'string', 'max:255'],
             'items.*.sku' => ['nullable', 'string', 'max:255'],
