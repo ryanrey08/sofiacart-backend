@@ -153,12 +153,35 @@ PHP does not parse multipart bodies for `PUT`/`PATCH`. To send an image while up
 ### Sales
 
 - `GET|POST /api/v1/customers`
+- `GET /api/v1/customers/summary`
 - `GET|PUT|PATCH|DELETE /api/v1/customers/{customer}`
 - `GET|POST /api/v1/orders`
 - `GET|PUT|PATCH|DELETE /api/v1/orders/{order}`
 - `PATCH /api/v1/orders/{order}/status`
 - `GET /api/v1/inventory/logs`
 - `POST /api/v1/inventory/adjust`
+
+#### Customers
+
+Customers are merchant-scoped contact records, **not** login accounts: there is no customer password, account activation, welcome email, customer group or price list.
+
+| Field | Rules |
+| --- | --- |
+| `first_name`, `last_name` | Max 100. When sent, `name` is derived as `"first last"`. `first_name` is required unless `name` is sent. |
+| `name` | Max 255. Legacy alternative to first/last name; sending only `name` clears `first_name`/`last_name`. |
+| `email` | Optional, lowercased, unique per merchant. `phone` optional, max 20. |
+| `customer_type` | `regular` (default), `vip`, `wholesale`. |
+| `is_active` | Boolean, default `true`. Responses also include `status` (`active` or `inactive`). |
+| `birthday` | `YYYY-MM-DD`, before today. `gender`: `male`, `female`, `other`, `prefer_not_to_say`. |
+| `tin` | Max 32; letters, numbers, spaces and hyphens. |
+| `default_address` | Object with `line1`, `line2`, `city`, `province`, `postal_code`, `country` (`line1` required when any other part is sent; `null` clears it). The formatted address is also stored in the legacy `address` string used for order shipping snapshots. `address` and `default_address` cannot be sent together. |
+| `notes` | Max 5000. `tags`: up to 20 unique strings (max 50 each). |
+
+`GET /api/v1/customers` accepts `search` (name, email, phone), `customer_type`, `status` (`active|inactive`), `registered_from`/`registered_to` (`YYYY-MM-DD`, by creation date), `sort` (`newest` default, `oldest`, `name_asc`, `name_desc`, `orders_desc`, `spent_desc`, `last_order_desc`) and `per_page` (max 100). List and detail responses include `orders_count`, `paid_orders_count`, `total_spent` (paid and partially refunded order totals minus processed refunds) and `last_order_at`; the detail and write responses also include the five latest `recent_orders`.
+
+`GET /api/v1/customers/summary` accepts `date_from`/`date_to` (`YYYY-MM-DD`, default: the 30 days ending today) and returns `period`, `total_customers`, `active_customers` and `inactive_customers` (all time), `new_customers` (created in the period), `returning_customers` (ordered in the period and also before it) and `total_orders` (orders of any status placed in the period).
+
+Customers with orders cannot be deleted (`409`); deactivate them instead. Admins must pass `merchant_id` when creating, and customers with orders cannot be moved to another merchant.
 
 Orders support line items, pagination, status filters, payment-status filters, and date-range filters.
 Order creation validates active product statuses, validates submitted unit prices against current catalog prices server-side, locks rows in ascending ID order to prevent deadlocks, and prevents overselling within database transactions. Stock is atomically deducted and logged in `inventory_logs`.

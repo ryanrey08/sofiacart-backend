@@ -2,23 +2,31 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Foundation\Http\FormRequest;
+use App\Models\Customer;
+use Illuminate\Validation\Rules\Unique;
 
-class UpdateCustomerRequest extends FormRequest
+class UpdateCustomerRequest extends StoreCustomerRequest
 {
-    public function authorize(): bool
-    {
-        return true;
-    }
-
     public function rules(): array
     {
         return [
-            'merchant_id' => ['nullable', 'integer', 'exists:merchants,id'],
+            ...parent::rules(),
             'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'email' => ['nullable', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:20'],
-            'address' => ['nullable', 'string'],
+            'first_name' => ['sometimes', 'required', 'string', 'max:100'],
         ];
+    }
+
+    protected function targetMerchantId(): ?int
+    {
+        if ($this->user()?->isAdmin() && ! $this->filled('merchant_id')) {
+            return Customer::whereKey((int) $this->route('customer'))->value('merchant_id');
+        }
+
+        return parent::targetMerchantId();
+    }
+
+    protected function uniqueEmailRule(): Unique
+    {
+        return parent::uniqueEmailRule()->ignore((int) $this->route('customer'));
     }
 }

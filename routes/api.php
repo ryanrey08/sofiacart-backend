@@ -58,6 +58,7 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function (): void {
     Route::post('categories/{category}/image', [CategoryController::class, 'uploadImage']);
     Route::patch('categories/{category}/status', [CategoryController::class, 'updateStatus']);
     Route::apiResource('products', ProductsController::class);
+    Route::get('customers/summary', [CustomerController::class, 'summary']);
     Route::apiResource('customers', CustomerController::class);
     Route::apiResource('orders', OrdersController::class);
     Route::patch('orders/{order}/status', [OrdersController::class, 'updateStatus']);
