@@ -217,4 +217,55 @@ class ProductCrudTest extends TestCase
         ])->assertUnprocessable()
             ->assertInvalid(['images.0']);
     }
+
+    public function test_product_supports_catalog_fields_and_variants(): void
+    {
+        $merchant = Merchant::factory()->create();
+        $category = Category::factory()->create(['merchant_id' => $merchant->id]);
+        Sanctum::actingAs($merchant->user);
+
+        $response = $this->postJson('/api/v1/products', [
+            'category_id' => $category->id,
+            'name' => 'Variant Shirt',
+            'slug' => 'variant-shirt',
+            'sku' => 'SHIRT-001',
+            'short_description' => 'A comfortable shirt',
+            'full_description' => '<p>Detailed description</p>',
+            'status' => ProductStatus::Active->value,
+            'regular_price' => 100,
+            'sale_price' => 90,
+            'cost_price' => 40,
+            'condition' => 'new',
+            'tags' => ['summer', 'shirt'],
+            'track_inventory' => true,
+            'stock_quantity' => 8,
+            'low_stock_threshold' => 10,
+            'variants' => [
+                ['sku' => 'SHIRT-001-RED', 'color' => 'Red', 'price' => 100, 'stock' => 4],
+                ['sku' => 'SHIRT-001-BLUE', 'color' => 'Blue', 'price' => 100, 'stock' => 4],
+            ],
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.regular_price', '100.00')
+            ->assertJsonPath('data.stock_status', 'low_stock')
+            ->assertJsonCount(2, 'data.variants');
+        $this->assertDatabaseCount('product_variants', 2);
+    }
+
+    public function test_sale_price_cannot_exceed_regular_price(): void
+    {
+        $merchant = Merchant::factory()->create();
+        Sanctum::actingAs($merchant->user);
+
+        $this->postJson('/api/v1/products', [
+            'name' => 'Invalid Sale',
+            'slug' => 'invalid-sale',
+            'sku' => 'SALE-001',
+            'status' => ProductStatus::Draft->value,
+            'regular_price' => 10,
+            'sale_price' => 11,
+            'stock_quantity' => 1,
+        ])->assertUnprocessable()->assertInvalid(['sale_price']);
+    }
 }
