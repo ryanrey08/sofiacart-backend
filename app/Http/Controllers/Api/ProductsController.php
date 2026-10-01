@@ -9,6 +9,7 @@ use App\Http\Requests\UpdateProductRequest;
 use App\Http\Resources\ProductResource;
 use App\Models\Category;
 use App\Models\Product;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -20,7 +21,7 @@ class ProductsController extends Controller
 
     public function index(Request $request)
     {
-        $query = Product::query()->with('category');
+        $query = Product::query()->with(['category', 'variants', 'imageRecords']);
         $this->scopeMerchant($query, $request);
 
         if ($search = $request->string('search')->toString()) {
@@ -40,6 +41,21 @@ class ProductsController extends Controller
             $query->where('category_id', $categoryId);
         }
 
+        if ($stockStatus = $request->string('stock_status')->toString()) {
+            match ($stockStatus) {
+                'out_of_stock' => $query->where('stock_quantity', 0),
+                'low_stock' => $query->where('stock_quantity', '>', 0)
+                    ->whereColumn('stock_quantity', '<=', 'low_stock_threshold')
+                    ->where('track_inventory', true),
+                'active' => $query->where('stock_quantity', '>', 0)
+                    ->where(function ($builder): void {
+                        $builder->where('track_inventory', false)
+                            ->orWhereColumn('stock_quantity', '>', 'low_stock_threshold');
+                    }),
+                default => null,
+            };
+        }
+
         return ProductResource::collection($query->latest()->paginate($this->pageSize($request)));
     }
 
@@ -48,32 +64,72 @@ class ProductsController extends Controller
         $data = $request->validated();
         $data['merchant_id'] = $this->merchantIdForWrite($request, $data['merchant_id'] ?? null);
         $this->ensureCategoryBelongsToMerchant($data['merchant_id'], $data['category_id'] ?? null);
-        $data['images'] = $this->storeImages($request, $data['merchant_id']);
+        $paths = $this->storeImages($request, $data['merchant_id']);
 
-        $product = Product::create($data);
+        try {
+            $product = DB::transaction(function () use ($data, $paths, $request): Product {
+                $data = $this->normaliseProductData($data);
+                unset($data['images'], $data['main_image_index'], $data['variants']);
+                $product = Product::create($data);
+                $this->syncImages($product, $paths, $request->integer('main_image_index'));
+                $this->syncVariants($product, $request->input('variants'));
 
-        return ProductResource::make($product->load('category'));
+                return $product;
+            });
+        } catch (Throwable $exception) {
+            $this->discardStoredImages($paths ?? []);
+            throw $exception;
+        }
+
+        return ProductResource::make($product->load(['category', 'variants', 'imageRecords']));
     }
 
     public function show(Request $request, int $product): ProductResource
     {
-        return ProductResource::make($this->scopeMerchant(Product::query()->with('category'), $request)->findOrFail($product));
+        return ProductResource::make($this->scopeMerchant(Product::query()->with(['category', 'variants', 'imageRecords']), $request)->findOrFail($product));
     }
 
     public function update(UpdateProductRequest $request, int $product): ProductResource
     {
-        $model = $this->scopeMerchant(Product::query()->with('category'), $request)->findOrFail($product);
+        $model = $this->scopeMerchant(Product::query()->with(['category', 'variants', 'imageRecords']), $request)->findOrFail($product);
         $data = $request->validated();
         $data['merchant_id'] = $this->merchantIdForWrite($request, $data['merchant_id'] ?? $model->merchant_id);
         $this->ensureCategoryBelongsToMerchant($data['merchant_id'], $data['category_id'] ?? $model->category_id);
 
-        if ($images = $this->storeImages($request, $data['merchant_id'])) {
-            $data['images'] = $images;
+        $paths = $this->storeImages($request, $data['merchant_id']);
+        $oldPaths = $model->imageRecords->pluck('path')->merge($model->images ?? [])->all();
+
+        try {
+            DB::transaction(function () use ($data, $model, $paths, $request): void {
+                $data = $this->normaliseProductData($data);
+                unset($data['images'], $data['main_image_index'], $data['image_ids'], $data['main_image_id'], $data['variants']);
+                $model->update($data);
+
+                if ($paths !== null) {
+                    $model->imageRecords()->delete();
+                    $this->syncImages($model, $paths, $request->integer('main_image_index'));
+                } elseif ($request->has('image_ids')) {
+                    $this->syncExistingImages(
+                        $model,
+                        $request->input('image_ids', []),
+                        $request->integer('main_image_id'),
+                    );
+                }
+
+                if ($request->has('variants')) {
+                    $this->syncVariants($model, $request->input('variants'));
+                }
+            });
+        } catch (Throwable $exception) {
+            $this->discardStoredImages($paths ?? []);
+            throw $exception;
         }
 
-        $model->update($data);
+        if ($paths !== null) {
+            $this->discardStoredImages(array_diff($oldPaths, $paths));
+        }
 
-        return ProductResource::make($model->fresh()->load('category'));
+        return ProductResource::make($model->fresh()->load(['category', 'variants', 'imageRecords']));
     }
 
     public function destroy(Request $request, int $product)
@@ -129,5 +185,76 @@ class ProductsController extends Controller
         if ($categoryId) {
             Category::where('merchant_id', $merchantId)->findOrFail($categoryId);
         }
+    }
+
+    protected function normaliseProductData(array $data): array
+    {
+        $data['price'] = $data['regular_price'] ?? $data['price'] ?? null;
+        $data['regular_price'] = $data['regular_price'] ?? $data['price'];
+        $data['description'] = $data['full_description'] ?? $data['description'] ?? null;
+
+        return $data;
+    }
+
+    protected function syncImages(Product $product, ?array $paths, ?int $mainIndex): void
+    {
+        if ($paths === null) {
+            return;
+        }
+
+        if ($mainIndex !== null && $mainIndex >= count($paths)) {
+            throw ValidationException::withMessages([
+                'main_image_index' => ['The selected main image does not exist.'],
+            ]);
+        }
+
+        $product->update(['images' => $paths]);
+        foreach ($paths as $index => $path) {
+            $product->imageRecords()->create([
+                'path' => $path,
+                'is_main' => $mainIndex === null ? $index === 0 : $index === $mainIndex,
+                'sort_order' => $index,
+            ]);
+        }
+    }
+
+    protected function syncVariants(Product $product, mixed $variants): void
+    {
+        if ($variants === null) {
+            return;
+        }
+
+        $product->variants()->delete();
+        foreach ($variants as $index => $variant) {
+            $product->variants()->create([
+                'sku' => $variant['sku'],
+                'color' => $variant['color'] ?? null,
+                'size' => $variant['size'] ?? null,
+                'attributes' => $variant['attributes'] ?? null,
+                'price' => $variant['price'],
+                'stock' => $variant['stock'],
+                'sort_order' => $variant['sort_order'] ?? $index,
+            ]);
+        }
+    }
+
+    protected function syncExistingImages(Product $product, array $imageIds, ?int $mainId): void
+    {
+        $images = $product->imageRecords()->whereIn('id', $imageIds)->get()
+            ->sortBy(fn ($image) => array_search($image->id, $imageIds, true))
+            ->values();
+
+        if ($images->isEmpty()) {
+            $product->imageRecords()->delete();
+        } else {
+            $product->imageRecords()->whereNotIn('id', $images->pluck('id'))->delete();
+        }
+        foreach ($images as $index => $image) {
+            $image->update([
+                'sort_order' => $index,
+                'is_main' => $mainId ? $image->id === $mainId : $index === 0,
+            ]);
+        }
+        $product->update(['images' => $images->pluck('path')->values()->all()]);
     }
 }
