@@ -22,7 +22,7 @@ trait SanitizesMetadata
 
         foreach ($data as $key => $value) {
             $isSensitive = is_string($key) && (bool) preg_match(
-                '/(password|token|secret|authorization|api_?key|private_?key|client_?secret|cvv|cvc|card_?number|pin|credential)/i',
+                '/(password|token|secret|authorization|(^|[_-])auth([_-]|$)|api_?key|private_?key|client_?secret|cvv|cvc|card_?number|security_?code|(^|[_-])pin([_-]|$)|credential)/i',
                 $key
             );
 

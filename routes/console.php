@@ -4,11 +4,13 @@ use App\Admin\AdminRoleRegistry;
 use App\Enums\UserRole;
 use App\Models\AdminRole;
 use App\Models\User;
+use App\Services\PaymentService;
 use Database\Seeders\AdminAuthorizationSeeder;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Str;
 
 Artisan::command('inspire', function () {
@@ -84,3 +86,11 @@ Artisan::command('admin:provision-super-admin {email} {name} {--phone=} {--force
 
     return 0;
 })->purpose('Provision a Super Admin without seeding a permanent password');
+
+Artisan::command('payments:expire', function (PaymentService $payments): int {
+    $this->info("Expired {$payments->expirePendingPayments()} pending payment(s).");
+
+    return 0;
+})->purpose('Mark pending payments past their expiry time as expired');
+
+Schedule::command('payments:expire')->everyFiveMinutes()->withoutOverlapping();

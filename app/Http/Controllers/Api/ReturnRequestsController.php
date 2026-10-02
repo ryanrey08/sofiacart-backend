@@ -9,12 +9,10 @@ use App\Enums\RefundStatus;
 use App\Http\Controllers\Concerns\InteractsWithMerchantScope;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ReturnRequestResource;
-use App\Models\InventoryLog;
 use App\Models\Order;
-use App\Models\Product;
-use App\Models\ProductVariant;
 use App\Models\Refund;
 use App\Models\ReturnRequest;
+use App\Services\InventoryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -24,6 +22,10 @@ use Illuminate\Validation\ValidationException;
 class ReturnRequestsController extends Controller
 {
     use InteractsWithMerchantScope;
+
+    public function __construct(
+        protected InventoryService $inventoryService
+    ) {}
 
     public function index(Request $request)
     {
@@ -169,48 +171,7 @@ class ReturnRequestsController extends Controller
                     throw ValidationException::withMessages(['refund_id' => ['No refund is needed for a zero-value return.']]);
                 }
 
-                $quantities = [];
-                $variantQuantities = [];
-                foreach ($return->items()->with('orderItem')->get() as $item) {
-                    if ($item->orderItem->product_id) {
-                        $id = $item->orderItem->product_id;
-                        if ($item->orderItem->product_variant_id) {
-                            $vid = $item->orderItem->product_variant_id;
-                            $variantQuantities[$vid] = ($variantQuantities[$vid] ?? 0) + $item->quantity;
-                        } else {
-                            $quantities[$id] = ($quantities[$id] ?? 0) + $item->quantity;
-                        }
-                    }
-                }
-                ksort($quantities);
-                foreach ($quantities as $id => $quantity) {
-                    $product = Product::where('merchant_id', $order->merchant_id)->lockForUpdate()->find($id);
-                    if ($product) {
-                        $product->increment('stock_quantity', $quantity);
-                        InventoryLog::create([
-                            'merchant_id' => $order->merchant_id, 'product_id' => $id,
-                            'user_id' => $request->user()?->id, 'reason' => 'Return processed: '.$return->id,
-                            'quantity_change' => $quantity, 'resulting_stock' => $product->stock_quantity,
-                            'notes' => 'Restored returned items for order #'.$order->order_number,
-                            'created_at' => now(),
-                        ]);
-                    }
-                }
-                ksort($variantQuantities);
-                foreach ($variantQuantities as $id => $quantity) {
-                    $variant = ProductVariant::whereHas('product', fn ($query) => $query->where('merchant_id', $order->merchant_id))
-                        ->lockForUpdate()->find($id);
-                    if ($variant) {
-                        $variant->increment('stock', $quantity);
-                        InventoryLog::create([
-                            'merchant_id' => $order->merchant_id, 'product_id' => $variant->product_id,
-                            'user_id' => $request->user()?->id, 'reason' => 'Return processed: '.$return->id,
-                            'quantity_change' => $quantity, 'resulting_stock' => $variant->stock,
-                            'notes' => 'Restored variant #'.$id.' for order #'.$order->order_number,
-                            'created_at' => now(),
-                        ]);
-                    }
-                }
+                $this->inventoryService->restoreStockForReturn($return, $order, $request->user()?->id);
             }
             $return->status = $data['status'];
             $return->save();

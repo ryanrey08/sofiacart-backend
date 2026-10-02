@@ -2,13 +2,15 @@
 
 namespace App\Http\Requests;
 
-use App\Enums\TransactionStatus;
-use App\Enums\TransactionType;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class UpdateTransactionRequest extends FormRequest
 {
+    public const IMMUTABLE_FIELDS = [
+        'merchant_id', 'payment_id', 'refund_id', 'order_id', 'reference', 'source_key',
+        'type', 'status', 'amount', 'description', 'transacted_at',
+    ];
+
     public function authorize(): bool
     {
         return true;
@@ -24,21 +26,23 @@ class UpdateTransactionRequest extends FormRequest
         }
     }
 
+    /**
+     * Ledger rows are immutable: only `metadata` (e.g. reconciliation notes) may be annotated.
+     * Status, amount and links are maintained by the payment and refund services.
+     */
     public function rules(): array
     {
-        $transactionId = $this->route('transaction');
-
         return [
-            'merchant_id' => ['nullable', 'integer', 'exists:merchants,id'],
-            'payment_id' => ['nullable', 'integer', 'exists:payments,id'],
-            'order_id' => ['nullable', 'integer', 'exists:orders,id'],
-            'reference' => ['sometimes', 'required', 'string', 'max:255', Rule::unique('transactions', 'reference')->ignore($transactionId)],
-            'type' => ['sometimes', 'required', Rule::enum(TransactionType::class)],
-            'status' => ['sometimes', 'required', Rule::enum(TransactionStatus::class)],
-            'amount' => ['sometimes', 'required', 'numeric', 'min:0'],
-            'description' => ['nullable', 'string'],
-            'transacted_at' => ['nullable', 'date'],
-            'metadata' => ['nullable', 'array'],
+            'metadata' => ['required', 'array'],
+            ...array_fill_keys(self::IMMUTABLE_FIELDS, ['prohibited']),
         ];
+    }
+
+    public function messages(): array
+    {
+        return array_fill_keys(
+            array_map(fn (string $field) => "{$field}.prohibited", self::IMMUTABLE_FIELDS),
+            'Transactions are immutable; only metadata can be updated.',
+        );
     }
 }

@@ -29,4 +29,12 @@ class ReturnRequest extends Model
     {
         return $this->belongsTo(Refund::class);
     }
+
+    /**
+     * Refund requests raised for this return (refunds.return_request_id).
+     */
+    public function refundRequests(): HasMany
+    {
+        return $this->hasMany(Refund::class);
+    }
 }

@@ -30,6 +30,7 @@ class PaymentRefundWorkflowTest extends TestCase
         $order = Order::factory()->create([
             'merchant_id' => $merchant->id,
             'customer_id' => $customer->id,
+            'status' => OrderStatus::Pending,
             'total_amount' => 300.00,
             'payment_status' => OrderPaymentStatus::Unpaid,
         ]);
@@ -61,7 +62,7 @@ class PaymentRefundWorkflowTest extends TestCase
     public function test_sensitive_gateway_metadata_is_redacted(): void
     {
         $merchant = Merchant::factory()->create();
-        $order = Order::factory()->create(['merchant_id' => $merchant->id]);
+        $order = Order::factory()->create(['merchant_id' => $merchant->id, 'status' => OrderStatus::Pending]);
 
         Sanctum::actingAs($merchant->user);
 
@@ -186,37 +187,41 @@ class PaymentRefundWorkflowTest extends TestCase
     public function test_transaction_cross_relation_integrity(): void
     {
         $merchant = Merchant::factory()->create();
-        $otherMerchant = Merchant::factory()->create();
 
-        $order = Order::factory()->create(['merchant_id' => $merchant->id]);
+        $order = Order::factory()->create(['merchant_id' => $merchant->id, 'status' => OrderStatus::Pending, 'total_amount' => 100.00]);
         $otherOrder = Order::factory()->create(['merchant_id' => $merchant->id]);
-        $payment = Payment::factory()->create([
-            'merchant_id' => $merchant->id,
-            'order_id' => $order->id,
-        ]);
 
         Sanctum::actingAs($merchant->user);
 
-        // Attempting to associate transaction with payment from order A and order B should fail
+        // Transactions are written by the payment service only; clients cannot create them.
         $this->postJson('/api/v1/transactions', [
-            'payment_id' => $payment->id,
             'order_id' => $otherOrder->id,
-            'reference' => 'TXN-MISMATCH',
+            'reference' => 'TXN-MANUAL',
             'type' => TransactionType::Payment->value,
-            'status' => TransactionStatus::Success->value,
+            'status' => TransactionStatus::Completed->value,
             'amount' => 100.00,
-        ])->assertStatus(422);
+        ])->assertStatus(405);
 
-        // Valid matching transaction succeeds
-        $this->postJson('/api/v1/transactions', [
-            'payment_id' => $payment->id,
+        // A recorded payment produces a transaction linked to the same payment and order.
+        $paymentId = $this->postJson('/api/v1/payments', [
             'order_id' => $order->id,
-            'reference' => 'TXN-MATCHING',
-            'type' => TransactionType::Payment->value,
-            'status' => TransactionStatus::Success->value,
+            'method' => 'gcash',
+            'status' => PaymentStatus::Completed->value,
             'amount' => 100.00,
-        ])->assertCreated()
-            ->assertJsonPath('data.reference', 'TXN-MATCHING');
+        ])->assertCreated()->json('data.id');
+
+        $transaction = $this->getJson("/api/v1/transactions?payment_id={$paymentId}")
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.order_id', $order->id)
+            ->assertJsonPath('data.0.type', TransactionType::Payment->value)
+            ->json('data.0');
+
+        // Links, amounts and statuses are immutable.
+        $this->patchJson("/api/v1/transactions/{$transaction['id']}", [
+            'order_id' => $otherOrder->id,
+            'metadata' => ['note' => 'moved'],
+        ])->assertStatus(422)->assertJsonValidationErrors(['order_id']);
     }
 
     public function test_merchant_isolation_for_payments_and_refunds(): void

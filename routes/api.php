@@ -68,11 +68,22 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function (): void {
     Route::patch('return-requests/{returnRequest}', [ReturnRequestsController::class, 'review']);
     Route::get('return-requests/{returnRequest}/evidence/{index}', [ReturnRequestsController::class, 'evidence']);
 
+    Route::get('inventory', [InventoryController::class, 'items']);
+    Route::get('inventory/summary', [InventoryController::class, 'summary']);
+    Route::get('inventory/products/{product}', [InventoryController::class, 'show']);
     Route::get('inventory/logs', [InventoryController::class, 'index']);
     Route::post('inventory/adjust', [InventoryController::class, 'adjust']);
 
+    Route::get('payments/summary', [PaymentsController::class, 'summary']);
+    Route::patch('payments/{payment}/status', [PaymentsController::class, 'updateStatus']);
+    Route::get('payments/{payment}/attachments/{index}', [PaymentsController::class, 'attachment']);
+    Route::get('orders/{order}/payment-balance', [PaymentsController::class, 'orderBalance']);
     Route::apiResource('payments', PaymentsController::class);
-    Route::apiResource('transactions', TransactionsController::class);
+    Route::get('transactions/summary', [TransactionsController::class, 'summary']);
+    Route::apiResource('transactions', TransactionsController::class)->only(['index', 'show', 'update']);
+    Route::get('refunds/summary', [RefundsController::class, 'summary']);
+    Route::get('orders/{order}/refundable', [RefundsController::class, 'refundable']);
+    Route::patch('refunds/{refund}/status', [RefundsController::class, 'updateStatus']);
     Route::apiResource('refunds', RefundsController::class);
 
     Route::prefix('reports')->group(function (): void {
@@ -127,12 +138,26 @@ Route::middleware(['auth:sanctum', 'admin', 'admin.token', 'admin.audit'])->pref
         ->middleware('admin.permission:products.manage');
     Route::delete('/products/{product}', [ProductsController::class, 'destroy'])
         ->middleware('admin.permission:products.manage');
+    Route::get('/inventory', [InventoryController::class, 'items'])
+        ->middleware('admin.permission:products.inventory.manage');
+    Route::get('/inventory/summary', [InventoryController::class, 'summary'])
+        ->middleware('admin.permission:products.inventory.manage');
+    Route::get('/inventory/products/{product}', [InventoryController::class, 'show'])
+        ->middleware('admin.permission:products.inventory.manage');
     Route::get('/inventory/logs', [InventoryController::class, 'index'])
         ->middleware('admin.permission:products.inventory.manage');
     Route::post('/inventory/adjust', [InventoryController::class, 'adjust'])
         ->middleware('admin.permission:products.inventory.manage');
 
     Route::get('/payments', [PaymentsController::class, 'index'])
+        ->middleware('admin.permission:payments.view');
+    Route::get('/payments/summary', [PaymentsController::class, 'summary'])
+        ->middleware('admin.permission:payments.view');
+    Route::patch('/payments/{payment}/status', [PaymentsController::class, 'updateStatus'])
+        ->middleware('admin.permission:payments.manage');
+    Route::get('/payments/{payment}/attachments/{index}', [PaymentsController::class, 'attachment'])
+        ->middleware('admin.permission:payments.view');
+    Route::get('/orders/{order}/payment-balance', [PaymentsController::class, 'orderBalance'])
         ->middleware('admin.permission:payments.view');
     Route::get('/payments/{payment}', [PaymentsController::class, 'show'])
         ->middleware('admin.permission:payments.view');
@@ -142,11 +167,21 @@ Route::middleware(['auth:sanctum', 'admin', 'admin.token', 'admin.audit'])->pref
         ->middleware('admin.permission:payments.manage');
     Route::get('/transactions', [TransactionsController::class, 'index'])
         ->middleware('admin.permission:payments.view');
+    Route::get('/transactions/summary', [TransactionsController::class, 'summary'])
+        ->middleware('admin.permission:payments.view');
+    Route::match(['put', 'patch'], '/transactions/{transaction}', [TransactionsController::class, 'update'])
+        ->middleware('admin.permission:payments.manage');
     Route::get('/transactions/{transaction}', [TransactionsController::class, 'show'])
         ->middleware('admin.permission:payments.view');
 
     Route::get('/refunds', [RefundsController::class, 'index'])
         ->middleware('admin.permission:payments.view');
+    Route::get('/refunds/summary', [RefundsController::class, 'summary'])
+        ->middleware('admin.permission:payments.view');
+    Route::get('/orders/{order}/refundable', [RefundsController::class, 'refundable'])
+        ->middleware('admin.permission:payments.view');
+    Route::patch('/refunds/{refund}/status', [RefundsController::class, 'updateStatus'])
+        ->middleware('admin.permission:payments.refund');
     Route::get('/refunds/{refund}', [RefundsController::class, 'show'])
         ->middleware('admin.permission:payments.view');
     Route::post('/refunds', [RefundsController::class, 'store'])

@@ -2,7 +2,6 @@
 
 namespace App\Http\Requests;
 
-use App\Enums\RefundStatus;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -23,6 +22,9 @@ class UpdateRefundRequest extends FormRequest
         }
     }
 
+    /**
+     * Details only; status changes go through PATCH /refunds/{refund}/status.
+     */
     public function rules(): array
     {
         $refundId = $this->route('refund');
@@ -33,10 +35,16 @@ class UpdateRefundRequest extends FormRequest
             'order_id' => ['nullable', 'integer', 'exists:orders,id'],
             'reference' => ['sometimes', 'required', 'string', 'max:255', Rule::unique('refunds', 'reference')->ignore($refundId)],
             'amount' => ['sometimes', 'required', 'numeric', 'min:0'],
-            'reason' => ['nullable', 'string'],
-            'status' => ['sometimes', 'required', Rule::enum(RefundStatus::class)],
+            'reason' => ['nullable', 'string', 'max:255'],
+            'status' => ['prohibited'],
+            'notes' => ['nullable', 'string', 'max:500'],
             'refunded_at' => ['nullable', 'date'],
             'metadata' => ['nullable', 'array'],
         ];
+    }
+
+    public function messages(): array
+    {
+        return ['status.prohibited' => 'Use PATCH /refunds/{refund}/status to change a refund status.'];
     }
 }

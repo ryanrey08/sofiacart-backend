@@ -4,16 +4,21 @@ namespace App\Models;
 
 use App\Enums\TransactionStatus;
 use App\Enums\TransactionType;
+use App\Models\Concerns\RedactsSensitiveMetadata;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Transaction extends Model
 {
+    use RedactsSensitiveMetadata;
+
     protected $fillable = [
         'merchant_id',
         'payment_id',
+        'refund_id',
         'order_id',
         'reference',
+        'source_key',
         'type',
         'status',
         'amount',
@@ -41,6 +46,11 @@ class Transaction extends Model
     public function payment(): BelongsTo
     {
         return $this->belongsTo(Payment::class);
+    }
+
+    public function refund(): BelongsTo
+    {
+        return $this->belongsTo(Refund::class);
     }
 
     public function order(): BelongsTo

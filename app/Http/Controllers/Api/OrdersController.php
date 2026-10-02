@@ -197,8 +197,8 @@ class OrdersController extends Controller
             return;
         }
         if (($newStatus === OrderStatus::Completed && $paymentStatus !== OrderPaymentStatus::Paid)
-            || ($newStatus === OrderStatus::Cancelled && $paymentStatus !== OrderPaymentStatus::Unpaid)) {
-            throw ValidationException::withMessages(['status' => ['Payment must be settled before fulfillment, or unpaid before cancellation.']]);
+            || ($newStatus === OrderStatus::Cancelled && ! in_array($paymentStatus, [OrderPaymentStatus::Unpaid, OrderPaymentStatus::Refunded], true))) {
+            throw ValidationException::withMessages(['status' => ['Payment must be settled before fulfillment, or unpaid/fully refunded before cancellation.']]);
         }
 
         $allowedTransitions = [
