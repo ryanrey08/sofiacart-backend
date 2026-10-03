@@ -8,9 +8,10 @@ use App\Http\Requests\StoreProductRequest;
 use App\Http\Requests\UpdateProductRequest;
 use App\Http\Resources\ProductResource;
 use App\Models\Category;
+use App\Models\OrderItem;
 use App\Models\Product;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -23,6 +24,14 @@ class ProductsController extends Controller
     {
         $query = Product::query()->with(['category', 'variants', 'imageRecords']);
         $this->scopeMerchant($query, $request);
+
+        if ($this->isAdmin($request)) {
+            $query->with('merchant:id,store_name,store_slug');
+
+            if ($request->filled('merchant_id')) {
+                $query->where('merchant_id', $request->integer('merchant_id'));
+            }
+        }
 
         if ($search = $request->string('search')->toString()) {
             $query->where(function ($builder) use ($search): void {
@@ -86,7 +95,13 @@ class ProductsController extends Controller
 
     public function show(Request $request, int $product): ProductResource
     {
-        return ProductResource::make($this->scopeMerchant(Product::query()->with(['category', 'variants', 'imageRecords']), $request)->findOrFail($product));
+        $query = Product::query()->with(['category', 'variants', 'imageRecords']);
+
+        if ($this->isAdmin($request)) {
+            $query->with('merchant:id,store_name,store_slug');
+        }
+
+        return ProductResource::make($this->scopeMerchant($query, $request)->findOrFail($product));
     }
 
     public function update(UpdateProductRequest $request, int $product): ProductResource
@@ -236,7 +251,7 @@ class ProductsController extends Controller
         $submitted = collect($variants)->pluck('sku');
         foreach ($existing as $variant) {
             if (! $submitted->contains($variant->sku)) {
-                if (\App\Models\OrderItem::where('product_variant_id', $variant->id)->exists()) {
+                if (OrderItem::where('product_variant_id', $variant->id)->exists()) {
                     throw ValidationException::withMessages(['variants' => ['Ordered variants cannot be removed.']]);
                 }
                 $variant->delete();

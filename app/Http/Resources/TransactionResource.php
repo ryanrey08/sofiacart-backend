@@ -2,12 +2,14 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\IncludesMerchantSummary;
 use App\Http\Resources\Concerns\SanitizesMetadata;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class TransactionResource extends JsonResource
 {
+    use IncludesMerchantSummary;
     use SanitizesMetadata;
 
     /**
@@ -19,6 +21,7 @@ class TransactionResource extends JsonResource
         return [
             'id' => $this->id,
             'merchant_id' => $this->merchant_id,
+            'merchant' => $this->merchantSummary(),
             'payment_id' => $this->payment_id,
             'refund_id' => $this->refund_id,
             'order_id' => $this->order_id,

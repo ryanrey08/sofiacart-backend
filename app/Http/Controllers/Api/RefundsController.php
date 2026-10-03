@@ -37,7 +37,8 @@ class RefundsController extends Controller
     {
         Gate::authorize('viewAny', Refund::class);
 
-        $query = $this->refundsQuery($request)->with(['order.customer', 'payment']);
+        $query = $this->refundsQuery($request)->with(['order.customer', 'payment'])
+            ->when($this->isAdmin($request), fn (Builder $query) => $query->with('merchant:id,store_name,store_slug'));
 
         foreach (['status', 'payment_id', 'order_id', 'return_request_id'] as $filter) {
             if ($request->filled($filter)) {

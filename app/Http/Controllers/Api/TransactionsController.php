@@ -32,7 +32,8 @@ class TransactionsController extends Controller
     {
         Gate::authorize('viewAny', Transaction::class);
 
-        $query = $this->transactionsQuery($request)->with(['payment', 'refund', 'order.customer']);
+        $query = $this->transactionsQuery($request)->with(['payment', 'refund', 'order.customer'])
+            ->when($this->isAdmin($request), fn (Builder $query) => $query->with('merchant:id,store_name,store_slug'));
 
         foreach (['type', 'status', 'order_id', 'payment_id', 'refund_id'] as $filter) {
             if ($request->filled($filter)) {

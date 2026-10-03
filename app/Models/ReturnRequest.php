@@ -15,6 +15,16 @@ class ReturnRequest extends Model
         return ['evidence' => 'array', 'amount' => 'decimal:2'];
     }
 
+    public function merchant(): BelongsTo
+    {
+        return $this->belongsTo(Merchant::class);
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);

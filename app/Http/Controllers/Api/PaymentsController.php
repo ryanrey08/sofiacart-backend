@@ -38,7 +38,8 @@ class PaymentsController extends Controller
     {
         Gate::authorize('viewAny', Payment::class);
 
-        $query = $this->paymentsQuery($request)->with('order.customer');
+        $query = $this->paymentsQuery($request)->with('order.customer')
+            ->when($this->isAdmin($request), fn (Builder $query) => $query->with('merchant:id,store_name,store_slug'));
 
         foreach (['status', 'method', 'gateway', 'order_id'] as $filter) {
             if ($request->filled($filter)) {

@@ -2,16 +2,20 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\IncludesMerchantSummary;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class ProductResource extends JsonResource
 {
+    use IncludesMerchantSummary;
+
     public function toArray(Request $request): array
     {
         return [
             'id' => $this->id,
             'merchant_id' => $this->merchant_id,
+            'merchant' => $this->merchantSummary(),
             'category_id' => $this->category_id,
             'name' => $this->name,
             'slug' => $this->slug,

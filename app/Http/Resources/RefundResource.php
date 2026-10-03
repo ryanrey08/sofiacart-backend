@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\IncludesMerchantSummary;
 use App\Http\Resources\Concerns\SanitizesMetadata;
 use App\Models\ReturnRequest;
 use Illuminate\Http\Request;
@@ -9,6 +10,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class RefundResource extends JsonResource
 {
+    use IncludesMerchantSummary;
     use SanitizesMetadata;
 
     public function toArray(Request $request): array
@@ -16,6 +18,7 @@ class RefundResource extends JsonResource
         return [
             'id' => $this->id,
             'merchant_id' => $this->merchant_id,
+            'merchant' => $this->merchantSummary(),
             'payment_id' => $this->payment_id,
             'order_id' => $this->order_id,
             'return_request_id' => $this->return_request_id,

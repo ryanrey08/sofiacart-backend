@@ -8,8 +8,8 @@ use App\Models\Merchant;
 use App\Models\Order;
 use App\Models\Payment;
 use BackedEnum;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PlatformReportsController extends Controller
@@ -19,16 +19,17 @@ class PlatformReportsController extends Controller
         $type = $request->string('type')->toString() ?: 'merchant_sales';
         $perPage = (int) $request->integer('per_page', 15);
 
-        $report = match ($type) {
-            'payment_status' => $this->paymentStatusReport($perPage),
-            'order_status' => $this->orderStatusReport($perPage),
-            default => $this->merchantSalesReport($perPage),
-        };
+        $report = $this->reportQuery($type, $request)->paginate($perPage);
 
         return response()->json([
             'data' => $report->items(),
             'meta' => [
                 'type' => $type,
+                'filters' => [
+                    'merchant_id' => $request->validated('merchant_id'),
+                    'date_from' => $request->validated('date_from'),
+                    'date_to' => $request->validated('date_to'),
+                ],
                 'current_page' => $report->currentPage(),
                 'last_page' => $report->lastPage(),
                 'per_page' => $report->perPage(),
@@ -40,11 +41,7 @@ class PlatformReportsController extends Controller
     public function export(PlatformReportRequest $request): StreamedResponse
     {
         $type = $request->string('type')->toString() ?: 'merchant_sales';
-        $query = match ($type) {
-            'payment_status' => $this->paymentStatusQuery(),
-            'order_status' => $this->orderStatusQuery(),
-            default => $this->merchantSalesQuery(),
-        };
+        $query = $this->reportQuery($type, $request);
         $columns = $this->exportColumns($type);
 
         return response()->streamDownload(function () use ($query, $columns): void {
@@ -64,25 +61,38 @@ class PlatformReportsController extends Controller
         ]);
     }
 
-    protected function merchantSalesReport(int $perPage): LengthAwarePaginator
+    protected function reportQuery(string $type, PlatformReportRequest $request)
     {
-        return $this->merchantSalesQuery()->paginate($perPage);
+        $merchantId = $request->filled('merchant_id') ? $request->integer('merchant_id') : null;
+        $dateFrom = $request->filled('date_from') ? $request->date('date_from')->startOfDay() : null;
+        $dateTo = $request->filled('date_to') ? $request->date('date_to')->endOfDay() : null;
+
+        return match ($type) {
+            'payment_status' => $this->paymentStatusQuery($merchantId, $dateFrom, $dateTo),
+            'order_status' => $this->orderStatusQuery($merchantId, $dateFrom, $dateTo),
+            default => $this->merchantSalesQuery($merchantId, $dateFrom, $dateTo),
+        };
     }
 
-    protected function paymentStatusReport(int $perPage): LengthAwarePaginator
-    {
-        return $this->paymentStatusQuery()->paginate($perPage);
-    }
-
-    protected function orderStatusReport(int $perPage): LengthAwarePaginator
-    {
-        return $this->orderStatusQuery()->paginate($perPage);
-    }
-
-    protected function merchantSalesQuery()
+    /**
+     * Merchant sales use order timestamps; the date range limits which orders are summed,
+     * so merchants without orders in the range still appear with zero sales.
+     */
+    protected function merchantSalesQuery(?int $merchantId = null, ?Carbon $dateFrom = null, ?Carbon $dateTo = null)
     {
         return Merchant::query()
-            ->leftJoin('orders', 'orders.merchant_id', '=', 'merchants.id')
+            ->leftJoin('orders', function ($join) use ($dateFrom, $dateTo): void {
+                $join->on('orders.merchant_id', '=', 'merchants.id');
+
+                if ($dateFrom) {
+                    $join->where('orders.ordered_at', '>=', $dateFrom);
+                }
+
+                if ($dateTo) {
+                    $join->where('orders.ordered_at', '<=', $dateTo);
+                }
+            })
+            ->when($merchantId, fn ($query) => $query->where('merchants.id', $merchantId))
             ->select('merchants.id', 'merchants.store_name', 'merchants.status')
             ->selectRaw('COALESCE(SUM(orders.total_amount), 0) as total_sales')
             ->selectRaw('COUNT(orders.id) as orders_count')
@@ -90,9 +100,12 @@ class PlatformReportsController extends Controller
             ->orderByDesc('total_sales');
     }
 
-    protected function paymentStatusQuery()
+    protected function paymentStatusQuery(?int $merchantId = null, ?Carbon $dateFrom = null, ?Carbon $dateTo = null)
     {
         return Payment::query()
+            ->when($merchantId, fn ($query) => $query->where('merchant_id', $merchantId))
+            ->when($dateFrom, fn ($query) => $query->where('created_at', '>=', $dateFrom))
+            ->when($dateTo, fn ($query) => $query->where('created_at', '<=', $dateTo))
             ->select('status')
             ->selectRaw('COUNT(*) as payments_count')
             ->selectRaw('SUM(amount) as total_amount')
@@ -100,9 +113,12 @@ class PlatformReportsController extends Controller
             ->orderBy('status');
     }
 
-    protected function orderStatusQuery()
+    protected function orderStatusQuery(?int $merchantId = null, ?Carbon $dateFrom = null, ?Carbon $dateTo = null)
     {
         return Order::query()
+            ->when($merchantId, fn ($query) => $query->where('merchant_id', $merchantId))
+            ->when($dateFrom, fn ($query) => $query->where('ordered_at', '>=', $dateFrom))
+            ->when($dateTo, fn ($query) => $query->where('ordered_at', '<=', $dateTo))
             ->select('status', 'payment_status')
             ->selectRaw('COUNT(*) as orders_count')
             ->selectRaw('SUM(total_amount) as total_amount')

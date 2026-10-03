@@ -34,6 +34,14 @@ class OrdersController extends Controller
         $query = Order::query()->with(['customer', 'items']);
         $this->scopeMerchant($query, $request);
 
+        if ($this->isAdmin($request)) {
+            $query->with('merchant:id,store_name,store_slug');
+
+            if ($request->filled('merchant_id')) {
+                $query->where('merchant_id', $request->integer('merchant_id'));
+            }
+        }
+
         if ($search = $request->string('search')->toString()) {
             $query->where(function ($builder) use ($search): void {
                 $builder->where('order_number', 'like', "%{$search}%")
@@ -98,7 +106,13 @@ class OrdersController extends Controller
     public function show(Request $request, int $order): OrderResource
     {
         $this->authorizeOperator($request);
-        return OrderResource::make($this->scopeMerchant(Order::query()->with(['customer', 'items']), $request)->findOrFail($order));
+        $query = Order::query()->with(['customer', 'items']);
+
+        if ($this->isAdmin($request)) {
+            $query->with(['merchant:id,store_name,store_slug', 'payments', 'refunds', 'returnRequests']);
+        }
+
+        return OrderResource::make($this->scopeMerchant($query, $request)->findOrFail($order));
     }
 
     public function update(UpdateOrderRequest $request, int $order): OrderResource
@@ -111,11 +125,12 @@ class OrdersController extends Controller
                 $newStatus = OrderStatus::from($data['status']);
                 $this->ensureValidStatusTransition($model->status, $newStatus, $model->payment_status);
                 if ($newStatus === OrderStatus::Cancelled && ! $model->inventory_restored) {
-                    $this->inventoryService->restoreStockForOrder($model, 'Order cancelled: ' . $model->order_number, $request->user()?->id);
+                    $this->inventoryService->restoreStockForOrder($model, 'Order cancelled: '.$model->order_number, $request->user()?->id);
                 }
             }
 
             $model->update($data);
+
             return $model;
         });
 
@@ -131,10 +146,11 @@ class OrdersController extends Controller
             $model = $this->scopeMerchant(Order::query(), $request)->lockForUpdate()->findOrFail($order);
             $this->ensureValidStatusTransition($model->status, $status, $model->payment_status);
             if ($status === OrderStatus::Cancelled && ! $model->inventory_restored) {
-                $this->inventoryService->restoreStockForOrder($model, 'Order cancelled: ' . $model->order_number, $request->user()?->id);
+                $this->inventoryService->restoreStockForOrder($model, 'Order cancelled: '.$model->order_number, $request->user()?->id);
             }
 
             $model->update(['status' => $status]);
+
             return $model;
         });
 

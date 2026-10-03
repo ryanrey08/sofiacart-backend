@@ -12,10 +12,15 @@ class CustomerManagementController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Customer::query()->withCount('orders');
+        $query = Customer::query()->withCount('orders')->with('merchant:id,store_name,store_slug');
 
         if ($merchantId = $request->integer('merchant_id')) {
             $query->where('merchant_id', $merchantId);
+        }
+
+        if ($request->filled('status')) {
+            $request->validate(['status' => ['in:active,inactive']]);
+            $query->where('is_active', $request->input('status') === 'active');
         }
 
         if ($search = $request->string('search')->toString()) {
@@ -35,7 +40,7 @@ class CustomerManagementController extends Controller
     {
         return response()->json([
             'data' => array_merge(
-                AdminCustomerResource::make($customer->loadCount('orders'))->toArray($request),
+                AdminCustomerResource::make($customer->loadCount('orders')->load('merchant:id,store_name,store_slug'))->toArray($request),
                 [
                     'merchant_id' => $customer->merchant_id,
                     'recent_orders' => OrderResource::collection(

@@ -31,6 +31,13 @@ class ReturnRequestsController extends Controller
     {
         $this->authorizeOperator($request);
         $query = $this->scopeMerchant(ReturnRequest::query()->with('items'), $request);
+        if ($this->isAdmin($request)) {
+            $query->with(['merchant:id,store_name,store_slug', 'order:id,order_number,status,payment_status,total_amount', 'customer:id,name']);
+
+            if ($request->filled('merchant_id')) {
+                $query->where('merchant_id', $request->integer('merchant_id'));
+            }
+        }
         if ($request->filled('order_id')) {
             $query->where('order_id', $request->integer('order_id'));
         }
@@ -44,7 +51,12 @@ class ReturnRequestsController extends Controller
     public function show(Request $request, int $returnRequest)
     {
         $this->authorizeOperator($request);
-        return ReturnRequestResource::make($this->scopeMerchant(ReturnRequest::query()->with('items'), $request)->findOrFail($returnRequest));
+        $query = ReturnRequest::query()->with('items');
+        if ($this->isAdmin($request)) {
+            $query->with(['merchant:id,store_name,store_slug', 'order:id,order_number,status,payment_status,total_amount', 'customer:id,name']);
+        }
+
+        return ReturnRequestResource::make($this->scopeMerchant($query, $request)->findOrFail($returnRequest));
     }
 
     public function store(Request $request)
@@ -89,7 +101,7 @@ class ReturnRequestsController extends Controller
                 $items = [];
                 foreach ($data['items'] as $index => $item) {
                     $orderedItem = $orderItems->get($item['order_item_id']);
-                    if (! $orderedItem || $item['quantity'] + (int) $reserved->get($item['order_item_id'], 0) > $orderedItem->quantity) {
+                    if (! $orderedItem || $orderedItem->quantity < $item['quantity'] + (int) $reserved->get($item['order_item_id'], 0)) {
                         throw ValidationException::withMessages(["items.{$index}.quantity" => ['The requested quantity exceeds the remaining returnable quantity.']]);
                     }
                     $items[] = [
@@ -175,6 +187,7 @@ class ReturnRequestsController extends Controller
             }
             $return->status = $data['status'];
             $return->save();
+
             return $return;
         });
 

@@ -2,12 +2,14 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\IncludesMerchantSummary;
 use App\Http\Resources\Concerns\SanitizesMetadata;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class PaymentResource extends JsonResource
 {
+    use IncludesMerchantSummary;
     use SanitizesMetadata;
 
     public function toArray(Request $request): array
@@ -15,6 +17,7 @@ class PaymentResource extends JsonResource
         return [
             'id' => $this->id,
             'merchant_id' => $this->merchant_id,
+            'merchant' => $this->merchantSummary(),
             'order_id' => $this->order_id,
             'reference' => $this->reference,
             'gateway_reference' => $this->gateway_reference,

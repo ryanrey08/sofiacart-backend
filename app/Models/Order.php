@@ -74,4 +74,9 @@ class Order extends Model
     {
         return $this->hasMany(Refund::class);
     }
+
+    public function returnRequests(): HasMany
+    {
+        return $this->hasMany(ReturnRequest::class);
+    }
 }
