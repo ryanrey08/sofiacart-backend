@@ -240,6 +240,54 @@ class OrderWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_order_goes_out_for_delivery_between_processing_and_completed(): void
+    {
+        $merchant = Merchant::factory()->create();
+        $customer = Customer::factory()->create(['merchant_id' => $merchant->id]);
+        $product = Product::factory()->create([
+            'merchant_id' => $merchant->id,
+            'status' => ProductStatus::Active,
+            'price' => 100.00,
+            'stock_quantity' => 10,
+        ]);
+
+        Sanctum::actingAs($merchant->user);
+
+        $orderId = $this->postJson('/api/v1/orders', [
+            'customer_id' => $customer->id,
+            'items' => [['product_id' => $product->id, 'quantity' => 4]],
+        ])->assertCreated()->json('data.id');
+        $this->postJson('/api/v1/payments', [
+            'order_id' => $orderId, 'reference' => 'pay-delivery-flow', 'gateway' => 'manual', 'status' => 'completed', 'amount' => 400,
+        ])->assertCreated();
+
+        $this->patchJson("/api/v1/orders/{$orderId}/status", ['status' => 'shipped'])
+            ->assertUnprocessable()->assertJsonValidationErrors(['status']);
+        $this->patchJson("/api/v1/orders/{$orderId}/status", ['status' => OrderStatus::OutForDelivery->value])
+            ->assertUnprocessable()->assertJsonValidationErrors(['status']);
+
+        $this->patchJson("/api/v1/orders/{$orderId}/status", ['status' => OrderStatus::Processing->value])->assertOk();
+        $this->patchJson("/api/v1/orders/{$orderId}/status", ['status' => OrderStatus::Completed->value])
+            ->assertUnprocessable()->assertJsonValidationErrors(['status']);
+
+        $this->patchJson("/api/v1/orders/{$orderId}/status", ['status' => OrderStatus::OutForDelivery->value])
+            ->assertOk()
+            ->assertJsonPath('data.status', OrderStatus::OutForDelivery->value);
+        $this->assertDatabaseHas('orders', ['id' => $orderId, 'status' => 'out_for_delivery']);
+
+        foreach ([OrderStatus::Pending, OrderStatus::Processing, OrderStatus::Cancelled] as $status) {
+            $this->patchJson("/api/v1/orders/{$orderId}/status", ['status' => $status->value])
+                ->assertUnprocessable()->assertJsonValidationErrors(['status']);
+        }
+
+        $this->patchJson("/api/v1/orders/{$orderId}/status", ['status' => OrderStatus::Completed->value])
+            ->assertOk()
+            ->assertJsonPath('data.status', OrderStatus::Completed->value);
+        $this->patchJson("/api/v1/orders/{$orderId}/status", ['status' => OrderStatus::OutForDelivery->value])
+            ->assertUnprocessable();
+        $this->assertDatabaseHas('products', ['id' => $product->id, 'stock_quantity' => 6]);
+    }
+
     public function test_merchant_cannot_order_another_merchants_product_or_customer(): void
     {
         $merchant = Merchant::factory()->create();

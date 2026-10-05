@@ -150,3 +150,22 @@ The following results came from the previous session, before the current resume 
 - Neither PR has a GitHub review approval or review comments. PR #1 remains draft. The exposed status checks have no status contexts; the visible `copilot` check is an in-progress Copilot cloud-agent run (with a prior successful agent run), not evidence that backend tests or required CI have passed. No required successful validation checks or approval are established for merging PR #1.
 - **Safe resolution:** keep both PRs open and preserve their branches. Do not merge PR #2 or change its base while PR #1 is still draft/incomplete. The repository owner should finish and review PR #1, mark it ready, and satisfy its required checks/approvals; merge PR #1 first. Then retarget PR #2 to `main`, resolve and validate any conflicts, obtain its required checks/approval, and only then merge it. No merge was performed in this session.
 - GitHub rejected a normal merge attempt on PR #2 with HTTP 403 because it is stacked; the available merge tool does not provide the asynchronous stacked-PR merge operation. That endpoint should not be used as a workaround before PR #1 is ready and merged.
+
+## Order status: Out for Delivery (2026-10-05)
+
+- **What changed:**
+  - `App\Enums\OrderStatus` adds `OutForDelivery = 'out_for_delivery'`.
+  - `OrdersController::ensureValidStatusTransition` now allows:
+    - `pending → processing | cancelled`
+    - `processing → out_for_delivery | cancelled`
+    - `out_for_delivery → completed` only
+    - The direct `processing → completed` path is **removed**, as requested.
+  - Completing an order still requires `payment_status = paid`.
+  - `InventoryService::reservingOrderStatuses()` includes `out_for_delivery`: the order is still open, so its stock stays reserved until it's completed.
+  - Refund-driven cancellation stays limited to pending/processing.
+- **Migration:** `2026_10_05_000000_add_out_for_delivery_order_status.php` is additive. It runs `ALTER TABLE orders MODIFY status ENUM(..., 'out_for_delivery', ...)`, and no rows are rewritten. Its `down()` refuses to run while any order is `out_for_delivery`. It was applied to the local docker DB on 2026-10-05 (status counts unchanged before and after).
+- **Tests:**
+  - New `OrderWorkflowTest::test_order_goes_out_for_delivery_between_processing_and_completed`: valid path, invalid jumps and reversals, unknown values.
+  - Inventory, refund and return tests now go through `out_for_delivery` before `completed`.
+  - `php artisan test`: 129 tests, 124 passed, 5 failed. The same 5 tests fail on the unchanged baseline (`ProductCrudTest` ×3 `products.price` NOT NULL, `OrderWorkflowTest::test_order_creation_rejects_inactive_or_draft_products`, `ReturnRequestWorkflowTest::test_variant_stock_and_order_finances_are_server_owned_and_cancellation_restores_stock`).
+- **Blocker:** `sofiacart-frontend` (merchant UI) still offers `processing → completed`, in `lib/merchant-commerce.ts` and `lib/admin/permissions.ts`, and has no Out for Delivery option. That action now returns 422 until the UI is updated.

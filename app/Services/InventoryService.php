@@ -556,7 +556,7 @@ class InventoryService
      */
     public static function reservingOrderStatuses(): array
     {
-        return [OrderStatus::Pending->value, OrderStatus::Processing->value];
+        return [OrderStatus::Pending->value, OrderStatus::Processing->value, OrderStatus::OutForDelivery->value];
     }
 
     /**

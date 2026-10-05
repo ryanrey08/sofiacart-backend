@@ -100,6 +100,7 @@ class RefundManagementTest extends TestCase
     {
         [$order, $paymentId] = $this->paidOrder();
         $this->patchJson("/api/v1/orders/{$order->id}/status", ['status' => 'processing'])->assertOk();
+        $this->patchJson("/api/v1/orders/{$order->id}/status", ['status' => 'out_for_delivery'])->assertOk();
         $this->patchJson("/api/v1/orders/{$order->id}/status", ['status' => 'completed'])->assertOk();
         $cableItem = $order->items->firstWhere('product_id', $this->cable->id);
 

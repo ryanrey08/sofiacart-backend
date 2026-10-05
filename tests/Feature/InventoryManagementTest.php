@@ -284,6 +284,8 @@ class InventoryManagementTest extends TestCase
         $this->postJson('/api/v1/payments', [
             'order_id' => $orderId, 'reference' => 'pay-inventory-flow', 'gateway' => 'manual', 'status' => 'completed', 'amount' => 300,
         ])->assertCreated();
+        $this->patchJson("/api/v1/orders/{$orderId}/status", ['status' => 'out_for_delivery'])->assertOk();
+        $this->assertStock($product, 10, 3, 7);
         $this->patchJson("/api/v1/orders/{$orderId}/status", ['status' => 'completed'])->assertOk();
         $this->assertStock($product, 7, 0, 7);
 

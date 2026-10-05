@@ -219,7 +219,8 @@ class OrdersController extends Controller
 
         $allowedTransitions = [
             OrderStatus::Pending->value => [OrderStatus::Processing->value, OrderStatus::Cancelled->value],
-            OrderStatus::Processing->value => [OrderStatus::Completed->value, OrderStatus::Cancelled->value],
+            OrderStatus::Processing->value => [OrderStatus::OutForDelivery->value, OrderStatus::Cancelled->value],
+            OrderStatus::OutForDelivery->value => [OrderStatus::Completed->value],
             OrderStatus::Completed->value => [],
             OrderStatus::Cancelled->value => [],
         ];

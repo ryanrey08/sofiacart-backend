@@ -38,6 +38,7 @@ class ReturnRequestWorkflowTest extends TestCase
         $itemId = Order::findOrFail($orderId)->items()->firstOrFail()->id;
         $this->assertEquals(6, $product->fresh()->stock_quantity);
         $this->patchJson("/api/v1/orders/{$orderId}/status", ['status' => 'processing'])->assertOk();
+        $this->patchJson("/api/v1/orders/{$orderId}/status", ['status' => 'out_for_delivery'])->assertOk();
         $this->patchJson("/api/v1/orders/{$orderId}/status", ['status' => 'completed'])->assertUnprocessable();
         $paymentId = $this->postJson('/api/v1/payments', [
             'order_id' => $orderId, 'reference' => 'pay-return-1',
