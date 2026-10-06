@@ -29,6 +29,7 @@ class ListMerchantsRequest extends FormRequest
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
             'sort' => ['nullable', Rule::in(self::SORTS)],
+            'has_pending_changes' => ['nullable', 'boolean'],
             'per_page' => ['nullable', 'integer'],
             'page' => ['nullable', 'integer', 'min:1'],
         ];

@@ -26,5 +26,10 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('admin-auth', function (Request $request): Limit {
             return Limit::perMinute(5)->by(Str::lower((string) $request->input('email')).'|'.$request->ip());
         });
+
+        // Limits current-password guessing through the change-password endpoint.
+        RateLimiter::for('account-password', function (Request $request): Limit {
+            return Limit::perMinute(5)->by('user:'.($request->user()?->getKey() ?? $request->ip()));
+        });
     }
 }

@@ -1,11 +1,13 @@
 <?php
 
+use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\Admin\AdminPermissionController;
 use App\Http\Controllers\Api\Admin\AdminRoleController;
 use App\Http\Controllers\Api\Admin\AdminUserController;
 use App\Http\Controllers\Api\Admin\AuthController as AdminAuthController;
 use App\Http\Controllers\Api\Admin\CustomerManagementController;
 use App\Http\Controllers\Api\Admin\DashboardController;
+use App\Http\Controllers\Api\Admin\MerchantChangeRequestController;
 use App\Http\Controllers\Api\Admin\MerchantManagementController;
 use App\Http\Controllers\Api\Admin\PlatformReportsController;
 use App\Http\Controllers\Api\Admin\SettingController;
@@ -15,6 +17,8 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\MerchantController;
+use App\Http\Controllers\Api\MerchantProfileController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OrdersController;
 use App\Http\Controllers\Api\PaymentsController;
 use App\Http\Controllers\Api\ProductsController;
@@ -30,6 +34,9 @@ Route::prefix('auth')->group(function (): void {
     Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/me', [AuthController::class, 'me']);
+        // The signed-in merchant's own personal details and password (no user id is accepted).
+        Route::patch('/me', [AccountController::class, 'update']);
+        Route::put('/password', [AccountController::class, 'changePassword'])->middleware('throttle:account-password');
     });
 });
 
@@ -52,6 +59,25 @@ Route::prefix('merchant')->group(function (): void {
 });
 
 Route::middleware('auth:sanctum')->prefix('v1')->group(function (): void {
+    // Store profile: reads return the approved record; edits become change requests for admin review.
+    Route::get('merchant/profile', [MerchantProfileController::class, 'show']);
+    Route::get('merchant/profile/change-requests', [MerchantProfileController::class, 'changeRequests']);
+    Route::post('merchant/profile/change-requests', [MerchantProfileController::class, 'submit']);
+    Route::get('merchant/profile/change-requests/{changeRequest}', [MerchantProfileController::class, 'showChangeRequest'])
+        ->whereNumber('changeRequest');
+    Route::post('merchant/profile/change-requests/{changeRequest}/withdraw', [MerchantProfileController::class, 'withdraw'])
+        ->whereNumber('changeRequest');
+    Route::get('merchant/profile/change-requests/{changeRequest}/files/{document}', [MerchantProfileController::class, 'changeRequestFile'])
+        ->whereNumber('changeRequest')
+        ->whereIn('document', array_keys(MerchantManagementController::DOCUMENTS));
+    Route::get('merchant/profile/documents/{document}', [MerchantProfileController::class, 'document'])
+        ->whereIn('document', array_keys(MerchantManagementController::DOCUMENTS));
+
+    // In-app notifications for the signed-in merchant.
+    Route::get('notifications', [NotificationController::class, 'index']);
+    Route::post('notifications/read-all', [NotificationController::class, 'markAllRead']);
+    Route::post('notifications/{notification}/read', [NotificationController::class, 'markRead']);
+
     Route::get('categories/stats', [CategoryController::class, 'stats']);
     Route::post('categories/bulk', [CategoryController::class, 'bulk']);
     Route::apiResource('categories', CategoryController::class);
@@ -114,6 +140,20 @@ Route::middleware(['auth:sanctum', 'admin', 'admin.token', 'admin.audit'])->pref
         ->middleware('admin.permission:merchants.view')->name('merchants.documents');
     Route::get('/merchants/{merchant}/billing', [MerchantManagementController::class, 'billing'])
         ->middleware('admin.permission:merchants.billing.view')->name('merchants.billing');
+    Route::get('/merchant-change-requests', [MerchantChangeRequestController::class, 'index'])
+        ->middleware('admin.permission:merchants.view')->name('merchant-change-requests.index');
+    Route::get('/merchant-change-requests/{changeRequest}', [MerchantChangeRequestController::class, 'show'])
+        ->middleware('admin.permission:merchants.view')->name('merchant-change-requests.show');
+    Route::patch('/merchant-change-requests/{changeRequest}/status', [MerchantChangeRequestController::class, 'updateStatus'])
+        ->middleware('admin.permission:merchants.manage')->name('merchant-change-requests.status');
+    Route::get('/merchant-change-requests/{changeRequest}/files/{document}', [MerchantChangeRequestController::class, 'file'])
+        ->whereIn('document', array_keys(MerchantManagementController::DOCUMENTS))
+        ->middleware('admin.permission:merchants.view')->name('merchant-change-requests.files');
+
+    // In-app notifications for the signed-in admin (always scoped to the admin user).
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
+    Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
 
     Route::get('/customers', [CustomerManagementController::class, 'index'])
         ->middleware('admin.permission:customers.view')->name('customers.index');

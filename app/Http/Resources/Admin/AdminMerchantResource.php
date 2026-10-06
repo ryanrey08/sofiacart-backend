@@ -25,6 +25,12 @@ class AdminMerchantResource extends MerchantResource
                 ->keys()
                 ->values()
                 ->all(),
+            // Profile edits awaiting review; the values above are always the approved (live) ones.
+            'pending_change_request' => $this->whenLoaded('pendingChangeRequest', fn () => $this->pendingChangeRequest ? [
+                'id' => $this->pendingChangeRequest->id,
+                'fields' => $this->pendingChangeRequest->changedFields(),
+                'submitted_at' => $this->pendingChangeRequest->created_at?->toISOString(),
+            ] : null),
         ]);
     }
 }

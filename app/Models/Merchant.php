@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Enums\MerchantChangeRequestStatus;
 use App\Enums\MerchantStatus;
 use Database\Factories\MerchantFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Merchant extends Model
 {
@@ -101,5 +103,21 @@ class Merchant extends Model
     public function refunds(): HasMany
     {
         return $this->hasMany(Refund::class);
+    }
+
+    public function changeRequests(): HasMany
+    {
+        return $this->hasMany(MerchantChangeRequest::class);
+    }
+
+    /**
+     * The profile edit awaiting admin review. The service allows at most one at a time.
+     */
+    public function pendingChangeRequest(): HasOne
+    {
+        return $this->hasOne(MerchantChangeRequest::class)->ofMany(
+            ['id' => 'max'],
+            fn ($query) => $query->where('status', MerchantChangeRequestStatus::Pending->value),
+        );
     }
 }

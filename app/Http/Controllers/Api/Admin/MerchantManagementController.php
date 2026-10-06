@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Enums\MerchantChangeRequestStatus;
 use App\Enums\MerchantStatus;
 use App\Enums\PaymentStatus;
 use App\Enums\RefundStatus;
@@ -39,7 +40,7 @@ class MerchantManagementController extends Controller
     public function index(ListMerchantsRequest $request)
     {
         $query = Merchant::query()
-            ->with('user')
+            ->with(['user', 'pendingChangeRequest'])
             ->withCount(['orders', 'products'])
             ->withSum([
                 'payments' => fn ($payments) => $payments->whereIn('status', $this->collectedPaymentStatuses()),
@@ -47,6 +48,12 @@ class MerchantManagementController extends Controller
 
         if ($status = $request->string('status')->toString()) {
             $query->where('status', $status);
+        }
+
+        if ($request->filled('has_pending_changes')) {
+            $request->boolean('has_pending_changes')
+                ? $query->whereHas('changeRequests', fn ($changes) => $changes->where('status', MerchantChangeRequestStatus::Pending->value))
+                : $query->whereDoesntHave('changeRequests', fn ($changes) => $changes->where('status', MerchantChangeRequestStatus::Pending->value));
         }
 
         if ($statuses = $request->validated('statuses')) {
@@ -114,6 +121,9 @@ class MerchantManagementController extends Controller
                     ->distinct()
                     ->orderBy('store_category')
                     ->pluck('store_category'),
+                'pending_profile_changes' => Merchant::query()
+                    ->whereHas('changeRequests', fn ($changes) => $changes->where('status', MerchantChangeRequestStatus::Pending->value))
+                    ->count(),
             ],
         ]);
     }
@@ -121,7 +131,7 @@ class MerchantManagementController extends Controller
     public function show(Merchant $merchant): AdminMerchantResource
     {
         return AdminMerchantResource::make(
-            $merchant->load(['user'])
+            $merchant->load(['user', 'pendingChangeRequest'])
                 ->loadCount(['orders', 'products', 'customers', 'payments', 'transactions', 'refunds'])
                 ->loadSum([
                     'payments' => fn ($payments) => $payments->whereIn('status', $this->collectedPaymentStatuses()),

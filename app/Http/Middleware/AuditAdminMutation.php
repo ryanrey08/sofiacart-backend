@@ -23,6 +23,11 @@ class AuditAdminMutation
 {
     protected const EXCLUDED_ROUTE_NAMES = [
         'admin.merchants.status',
+        // Logged by MerchantProfileChangeService with the change request and fields.
+        'admin.merchant-change-requests.status',
+        // Marking one's own notifications read is not an administrative mutation.
+        'admin.notifications.read',
+        'admin.notifications.read-all',
     ];
 
     /**
