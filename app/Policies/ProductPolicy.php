@@ -25,6 +25,17 @@ class ProductPolicy
     }
 
     /**
+     * Approving or rejecting products (and edits to approved products) is an admin decision: it
+     * needs an admin-scoped token and `products.approve`. Merchants can never review.
+     */
+    public function review(User $user): bool
+    {
+        return $user->isAdmin()
+            && $user->currentAccessToken()?->can('admin') === true
+            && $user->hasAdminPermission(AdminPermissionRegistry::PRODUCTS_APPROVE);
+    }
+
+    /**
      * Admins need an admin-scoped token and the inventory permission; merchants may only
      * touch their own products.
      */

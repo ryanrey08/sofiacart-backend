@@ -22,9 +22,8 @@ class InventoryService
     /**
      * Lock and validate products for an incoming order items payload.
      *
-     * @param int $merchantId
-     * @param array $items
      * @return Collection<int, Product>
+     *
      * @throws ValidationException
      */
     public function lockAndValidateProductsForOrder(int $merchantId, array $items): Collection
@@ -70,7 +69,8 @@ class InventoryService
                 ]);
             }
 
-            if ($product->status !== ProductStatus::Active) {
+            // Only approved, active products can be sold (approval is never implied by status alone).
+            if ($product->status !== ProductStatus::Active || ! $product->isApproved()) {
                 throw ValidationException::withMessages([
                     "items.{$index}.product_id" => ["The product '{$product->name}' is not active and cannot be ordered."],
                 ]);
@@ -170,7 +170,7 @@ class InventoryService
                     'product_id' => $product->id,
                     'user_id' => $userId,
                     'type' => InventoryMovementType::Sale,
-                    'reason' => 'Order created: ' . $order->order_number,
+                    'reason' => 'Order created: '.$order->order_number,
                     'quantity_change' => -$qty,
                     'resulting_stock' => $newStock,
                     'reference_type' => 'order',
@@ -190,8 +190,7 @@ class InventoryService
         string $reason,
         ?int $userId = null,
         InventoryMovementType $type = InventoryMovementType::Cancellation,
-    ): bool
-    {
+    ): bool {
         if ($order->inventory_restored) {
             return false;
         }

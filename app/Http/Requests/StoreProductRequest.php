@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\ProductStatus;
+use App\Models\Product;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -24,7 +25,10 @@ class StoreProductRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'short_description' => ['nullable', 'string', 'max:200'],
             'full_description' => ['nullable', 'string', 'max:2000'],
-            'status' => ['required', Rule::enum(ProductStatus::class)],
+            // Defaults to pending_approval; `active` is only reachable through admin approval
+            // (enforced by ProductApprovalService::assertStatusChangeAllowed()).
+            'status' => ['sometimes', 'required', Rule::enum(ProductStatus::class)],
+            ...self::reviewFieldRules(),
             'price' => ['nullable', 'numeric', 'min:0'],
             'regular_price' => ['required_without:price', 'nullable', 'numeric', 'min:0'],
             'sale_price' => ['nullable', 'numeric', 'min:0', 'lte:regular_price'],
@@ -52,6 +56,16 @@ class StoreProductRequest extends FormRequest
             'variants.*.stock' => ['required', 'integer', 'min:0'],
             'variants.*.sort_order' => ['sometimes', 'integer', 'min:0'],
         ];
+    }
+
+    /**
+     * Approval bookkeeping is set only by the approval workflow, never by the submitter.
+     *
+     * @return array<string, array<int, string>>
+     */
+    public static function reviewFieldRules(): array
+    {
+        return array_fill_keys(Product::REVIEW_FIELDS, ['prohibited']);
     }
 
     protected function prepareForValidation(): void

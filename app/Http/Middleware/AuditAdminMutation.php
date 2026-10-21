@@ -25,6 +25,9 @@ class AuditAdminMutation
         'admin.merchants.status',
         // Logged by MerchantProfileChangeService with the change request and fields.
         'admin.merchant-change-requests.status',
+        // Logged by ProductApprovalService with the decision, reason and changed fields.
+        'admin.products.approval',
+        'admin.product-change-requests.status',
         // Marking one's own notifications read is not an administrative mutation.
         'admin.notifications.read',
         'admin.notifications.read-all',

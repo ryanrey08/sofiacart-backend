@@ -24,6 +24,27 @@ class ProductResource extends JsonResource
             'short_description' => $this->short_description,
             'full_description' => $this->full_description,
             'status' => $this->status?->value,
+            // Approval state. Only an admin decision sets approved_at/reviewed_*/rejection_reason.
+            'approval' => [
+                'is_approved' => $this->approved_at !== null,
+                'submitted_at' => $this->submitted_at?->toISOString(),
+                'approved_at' => $this->approved_at?->toISOString(),
+                'reviewed_at' => $this->reviewed_at?->toISOString(),
+                'reviewed_by' => $this->whenLoaded('reviewer', fn () => $this->reviewer
+                    ? ['id' => $this->reviewer->id, 'name' => $this->reviewer->name]
+                    : null),
+                'rejection_reason' => $this->rejection_reason,
+            ],
+            // Customer-facing outcome: published, out_of_stock, hidden, store_unavailable, or the
+            // pre-approval state (draft, pending_approval, rejected, archived).
+            'listing_status' => $this->resource->listingStatus(),
+            'pending_change_request' => $this->whenLoaded('pendingChangeRequest', fn () => $this->pendingChangeRequest
+                ? ProductChangeRequestResource::make($this->pendingChangeRequest->setRelation('product', $this->resource))
+                : null),
+            // The most recent edit request in any state, so a rejection reason stays visible to the merchant.
+            'latest_change_request' => $this->whenLoaded('latestChangeRequest', fn () => $this->latestChangeRequest
+                ? ProductChangeRequestResource::make($this->latestChangeRequest)
+                : null),
             'price' => $this->price,
             'regular_price' => $this->regular_price ?? $this->price,
             'sale_price' => $this->sale_price,

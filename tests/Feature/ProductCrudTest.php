@@ -34,14 +34,16 @@ class ProductCrudTest extends TestCase
             'slug' => 'fresh-apples',
             'sku' => 'SKU-APPLE-001',
             'description' => 'Crisp and sweet apples',
-            'status' => ProductStatus::Active->value,
             'price' => 99.50,
             'stock_quantity' => 25,
         ]);
 
+        // New merchant products go to review; they are never created active.
         $createResponse->assertCreated()
             ->assertJsonPath('data.name', 'Fresh Apples')
-            ->assertJsonPath('data.merchant_id', $merchant->id);
+            ->assertJsonPath('data.merchant_id', $merchant->id)
+            ->assertJsonPath('data.status', ProductStatus::PendingApproval->value)
+            ->assertJsonPath('data.approval.is_approved', false);
 
         $productId = $createResponse->json('data.id');
 
@@ -52,6 +54,10 @@ class ProductCrudTest extends TestCase
         $this->getJson("/api/v1/products/{$productId}")
             ->assertOk()
             ->assertJsonPath('data.id', $productId);
+
+        $this->postJson("/api/v1/products/{$productId}/withdraw")
+            ->assertOk()
+            ->assertJsonPath('data.status', ProductStatus::Draft->value);
 
         $this->patchJson("/api/v1/products/{$productId}", [
             'name' => 'Fresh Green Apples',
@@ -231,7 +237,7 @@ class ProductCrudTest extends TestCase
             'sku' => 'SHIRT-001',
             'short_description' => 'A comfortable shirt',
             'full_description' => '<p>Detailed description</p>',
-            'status' => ProductStatus::Active->value,
+            'status' => ProductStatus::Draft->value,
             'regular_price' => 100,
             'sale_price' => 90,
             'cost_price' => 40,

@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\Admin\DashboardController;
 use App\Http\Controllers\Api\Admin\MerchantChangeRequestController;
 use App\Http\Controllers\Api\Admin\MerchantManagementController;
 use App\Http\Controllers\Api\Admin\PlatformReportsController;
+use App\Http\Controllers\Api\Admin\ProductApprovalController;
 use App\Http\Controllers\Api\Admin\SettingController;
 use App\Http\Controllers\Api\Admin\SystemLogController;
 use App\Http\Controllers\Api\AuthController;
@@ -98,6 +99,10 @@ Route::middleware(['auth:sanctum', 'merchant.verified'])->prefix('v1')->group(fu
     Route::post('categories/{category}/image', [CategoryController::class, 'uploadImage']);
     Route::patch('categories/{category}/status', [CategoryController::class, 'updateStatus']);
     Route::apiResource('products', ProductsController::class);
+    // Product approval: merchants submit/withdraw; only admins approve (see /admin/products/{product}/approval).
+    Route::post('products/{product}/submit', [ProductsController::class, 'submit'])->whereNumber('product');
+    Route::post('products/{product}/withdraw', [ProductsController::class, 'withdraw'])->whereNumber('product');
+    Route::post('products/{product}/change-request/withdraw', [ProductsController::class, 'withdrawChanges'])->whereNumber('product');
     Route::get('customers/summary', [CustomerController::class, 'summary']);
     Route::apiResource('customers', CustomerController::class);
     Route::apiResource('orders', OrdersController::class);
@@ -206,6 +211,12 @@ Route::middleware(['auth:sanctum', 'admin', 'admin.token', 'admin.audit'])->pref
         ->middleware('admin.permission:products.manage')->name('products.update');
     Route::delete('/products/{product}', [ProductsController::class, 'destroy'])
         ->middleware('admin.permission:products.manage')->name('products.destroy');
+    Route::patch('/products/{product}/approval', [ProductApprovalController::class, 'review'])
+        ->whereNumber('product')
+        ->middleware('admin.permission:products.approve')->name('products.approval');
+    Route::patch('/product-change-requests/{changeRequest}/status', [ProductApprovalController::class, 'reviewChanges'])
+        ->whereNumber('changeRequest')
+        ->middleware('admin.permission:products.approve')->name('product-change-requests.status');
     Route::get('/inventory', [InventoryController::class, 'items'])
         ->middleware('admin.permission:products.inventory.manage')->name('inventory.index');
     Route::get('/inventory/summary', [InventoryController::class, 'summary'])

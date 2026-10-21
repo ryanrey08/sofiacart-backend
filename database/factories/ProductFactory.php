@@ -33,6 +33,10 @@ class ProductFactory extends Factory
             'stock_quantity' => fake()->numberBetween(0, 200),
             'low_stock_threshold' => 5,
             'images' => ['products/default.png'],
+            // Active products are only reachable through approval, so they carry an approval date.
+            'approved_at' => fn (array $attributes) => in_array($attributes['status'] ?? null, [ProductStatus::Active, ProductStatus::Active->value], true)
+                ? now()
+                : null,
         ];
     }
 }

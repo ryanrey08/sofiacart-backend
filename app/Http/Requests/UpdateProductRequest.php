@@ -28,6 +28,7 @@ class UpdateProductRequest extends FormRequest
             'short_description' => ['sometimes', 'required', 'string', 'max:200'],
             'full_description' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'status' => ['sometimes', 'required', Rule::enum(ProductStatus::class)],
+            ...StoreProductRequest::reviewFieldRules(),
             'price' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'regular_price' => ['sometimes', 'required', 'numeric', 'min:0'],
             'sale_price' => ['sometimes', 'nullable', 'numeric', 'min:0', 'lte:regular_price'],
