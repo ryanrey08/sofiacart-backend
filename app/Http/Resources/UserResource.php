@@ -15,6 +15,8 @@ class UserResource extends JsonResource
             'phone' => $this->phone,
             'name' => $this->name,
             'email' => $this->email,
+            'email_verified' => $this->hasVerifiedEmail(),
+            'email_verified_at' => $this->email_verified_at?->toISOString(),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
             'merchant' => MerchantResource::make($this->whenLoaded('merchant')),

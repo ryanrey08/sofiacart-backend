@@ -8,6 +8,7 @@ services:
     volumes:
       - ./:/var/www
       - vendor_data:/var/www/vendor
+      - ./docker/php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
     command: sh -c "git config --global --add safe.directory /var/www || true; [ -f .env ] || cp .env.example .env; (grep -q '^APP_KEY=base64:' .env || php artisan key:generate --force) && php-fpm"
     depends_on:
       db:

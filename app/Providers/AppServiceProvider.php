@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -30,6 +31,30 @@ class AppServiceProvider extends ServiceProvider
         // Limits current-password guessing through the change-password endpoint.
         RateLimiter::for('account-password', function (Request $request): Limit {
             return Limit::perMinute(5)->by('user:'.($request->user()?->getKey() ?? $request->ip()));
+        });
+
+        // Verification tokens are 64 random characters; this only slows automated guessing.
+        RateLimiter::for('merchant-email-verify', function (Request $request): Limit {
+            return Limit::perMinute(10)->by('ip:'.$request->ip());
+        });
+
+        // Applied per address (or signed-in user) and per IP, whether or not the address is
+        // registered, so the limit itself doesn't reveal which addresses have accounts.
+        RateLimiter::for('merchant-email-resend', function (Request $request): array {
+            $identity = $request->user()
+                ? 'user:'.$request->user()->getKey()
+                : 'email:'.Str::lower(trim((string) $request->input('email')));
+
+            $tooManyRequests = fn (Request $request, array $headers): JsonResponse => new JsonResponse([
+                'message' => 'Please wait before requesting another verification email.',
+                'retry_after' => (int) ($headers['Retry-After'] ?? 60),
+            ], 429, $headers);
+
+            return [
+                Limit::perMinute(1)->by('minute|'.$identity)->response($tooManyRequests),
+                Limit::perHour(5)->by('hour|'.$identity)->response($tooManyRequests),
+                Limit::perMinute(10)->by('ip|'.$request->ip())->response($tooManyRequests),
+            ];
         });
     }
 }

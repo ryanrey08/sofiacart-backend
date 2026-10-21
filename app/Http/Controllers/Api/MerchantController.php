@@ -10,17 +10,52 @@ use App\Http\Resources\MerchantResource;
 use App\Http\Resources\UserResource;
 use App\Models\Merchant;
 use App\Models\User;
+use App\Services\MerchantEmailVerificationService;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
 class MerchantController extends Controller
 {
-    public function register(RegisterMerchantRequest $request): JsonResponse
+    /**
+     * Creates the merchant user (email unverified) and the merchant application (pending admin
+     * review), then emails a verification link to the address entered on the form. Email
+     * verification and admin approval are separate: verifying never approves the store.
+     */
+    public function register(RegisterMerchantRequest $request, MerchantEmailVerificationService $verification): JsonResponse
     {
         $validated = $request->validated();
         $basePath = 'merchants/'.$validated['store_slug'];
 
-        $merchant = DB::transaction(function () use ($request, $validated, $basePath): Merchant {
+        try {
+            $merchant = $this->createMerchant($request, $validated, $basePath);
+        } catch (UniqueConstraintViolationException) {
+            // A concurrent registration claimed the same email, TIN or store URL after validation.
+            return response()->json([
+                'message' => 'A registration with one or more of these details already exists.',
+            ], 409);
+        }
+
+        $user = $merchant->user()->with('merchant')->first();
+        $verificationEmailSent = $verification->sendVerificationLink($user);
+
+        return response()->json([
+            'message' => $verificationEmailSent
+                ? 'Merchant registered successfully. Check your email to verify your address.'
+                : "Merchant registered successfully, but we couldn't send the verification email. Request a new link to verify your address.",
+            'verification_email_sent' => $verificationEmailSent,
+            'verification_expires_in_minutes' => $verification->expiresInMinutes(),
+            'user' => UserResource::make($user),
+            'merchant' => MerchantResource::make($merchant),
+        ], 201);
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    protected function createMerchant(RegisterMerchantRequest $request, array $validated, string $basePath): Merchant
+    {
+        return DB::transaction(function () use ($request, $validated, $basePath): Merchant {
             $user = User::create([
                 'role' => UserRole::Merchant,
                 'phone' => $validated['phone'],
@@ -63,11 +98,5 @@ class MerchantController extends Controller
                 'status' => MerchantStatus::Pending,
             ]);
         });
-
-        return response()->json([
-            'message' => 'Merchant registered successfully.',
-            'user' => UserResource::make($merchant->user()->with('merchant')->first()),
-            'merchant' => MerchantResource::make($merchant),
-        ], 201);
     }
 }

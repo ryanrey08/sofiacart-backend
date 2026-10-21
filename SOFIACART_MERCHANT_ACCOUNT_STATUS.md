@@ -39,7 +39,7 @@ All three are in the existing `auth` group (`auth:sanctum`). The account is `$re
 - `email` is required, valid, max 255, and unique (ignoring the user's own account).
 - `phone` is required and must be a Philippine mobile number (same rule as registration).
 - **Changing the email requires `current_password`**, because the email is the login identifier. A different-case version of the same address does not count as a change.
-- A changed email resets `email_verified_at` to null. Nothing in the app currently relies on verification.
+- A changed email (ignoring letter case) resets `email_verified_at` to null and emails a verification link to the new address; merchant features stay blocked until it is verified. See `SOFIACART_MERCHANT_EMAIL_VERIFICATION_STATUS.md`.
 - These fields are `prohibited` and return 422:
   - `id`, `user_id`, `role`, `is_active`, `status`
   - `password`, `password_confirmation`, `email_verified_at`, `last_login_at`, `remember_token`

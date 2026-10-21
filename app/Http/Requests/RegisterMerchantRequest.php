@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 
 class RegisterMerchantRequest extends FormRequest
 {
@@ -13,6 +14,11 @@ class RegisterMerchantRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        // Normalized so "Owner@Example.com" can't register a second account for the same mailbox.
+        if (is_string($this->email)) {
+            $this->merge(['email' => Str::lower(trim($this->email))]);
+        }
+
         if (is_string($this->social_links)) {
             $decoded = json_decode($this->social_links, true);
             if (json_last_error() === JSON_ERROR_NONE) {

@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ChangePasswordRequest;
 use App\Http\Requests\UpdateAccountRequest;
 use App\Http\Resources\UserResource;
 use App\Notifications\AccountPasswordChanged;
 use App\Services\AdminAuditLogger;
+use App\Services\MerchantEmailVerificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -21,14 +23,17 @@ class AccountController extends Controller
 {
     public function __construct(
         protected AdminAuditLogger $auditLogger,
+        protected MerchantEmailVerificationService $emailVerification,
     ) {}
 
     public function update(UpdateAccountRequest $request): UserResource
     {
         $user = $request->user();
+        // Checked before fill(): a different-case spelling of the same mailbox is not a new address.
+        $addressChanged = $request->emailChanges();
         $user->fill($request->safe()->only(['name', 'email', 'phone']));
 
-        if ($user->isDirty('email')) {
+        if ($addressChanged) {
             // The new address has not been verified.
             $user->email_verified_at = null;
         }
@@ -46,6 +51,11 @@ class AccountController extends Controller
                 'Merchant updated their account details.',
                 ['fields' => $fields],
             );
+
+            // A changed address must be verified again before merchant features are available.
+            if ($addressChanged && $user->role === UserRole::Merchant) {
+                $this->emailVerification->sendVerificationLink($user);
+            }
         }
 
         return UserResource::make($user->fresh()->load('merchant'));

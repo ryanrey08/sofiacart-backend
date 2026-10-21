@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\MerchantController;
+use App\Http\Controllers\Api\MerchantEmailVerificationController;
 use App\Http\Controllers\Api\MerchantProfileController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OrdersController;
@@ -56,9 +57,18 @@ Route::prefix('admin/auth')->group(function (): void {
 
 Route::prefix('merchant')->group(function (): void {
     Route::post('/register', [MerchantController::class, 'register']);
+
+    // Email verification: links are redeemed without signing in; the token identifies the account.
+    Route::post('/email/verify', [MerchantEmailVerificationController::class, 'verify'])
+        ->middleware('throttle:merchant-email-verify');
+    Route::post('/email/resend', [MerchantEmailVerificationController::class, 'resend'])
+        ->middleware('throttle:merchant-email-resend');
+    Route::post('/email/verification-notification', [MerchantEmailVerificationController::class, 'resendForCurrentUser'])
+        ->middleware(['auth:sanctum', 'throttle:merchant-email-resend']);
 });
 
-Route::middleware('auth:sanctum')->prefix('v1')->group(function (): void {
+// Merchant features require a verified email address (admins are not affected; see EnsureMerchantEmailIsVerified).
+Route::middleware(['auth:sanctum', 'merchant.verified'])->prefix('v1')->group(function (): void {
     // Store profile: reads return the approved record; edits become change requests for admin review.
     Route::get('merchant/profile', [MerchantProfileController::class, 'show']);
     Route::get('merchant/profile/change-requests', [MerchantProfileController::class, 'changeRequests']);
