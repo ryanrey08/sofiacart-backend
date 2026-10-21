@@ -6,6 +6,7 @@ enum PaymentMethod: string
 {
     case Card = 'card';
     case Gcash = 'gcash';
+    case Qrph = 'qrph';
     case Maya = 'maya';
     case BankTransfer = 'bank_transfer';
     case Cod = 'cod';
@@ -21,6 +22,7 @@ enum PaymentMethod: string
         return match (strtolower((string) $gateway)) {
             'card', 'credit_card' => self::Card,
             'gcash' => self::Gcash,
+            'qrph', 'qr_ph', 'qrph_netbank' => self::Qrph,
             'maya', 'paymaya' => self::Maya,
             'bank_transfer' => self::BankTransfer,
             'cod', 'cash_on_delivery' => self::Cod,

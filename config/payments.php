@@ -33,17 +33,23 @@ return [
     |--------------------------------------------------------------------------
     |
     | Gateways listed here confirm payments through verified gateway callbacks
-    | only, so merchants cannot mark their payments completed by hand. No
-    | gateway is integrated yet; every payment is recorded with the "manual"
-    | gateway and confirmed by an authorized merchant/admin. Gateway
-    | credentials must be read from environment variables, never stored in
-    | the database or returned by the API.
+    | only, so merchants cannot mark their payments completed by hand. HitPay
+    | (QR Ph, GCash, Credit Card) is integrated in the customer storefront
+    | backend (sofiacart-website-backend): its payments are recorded with the
+    | "hitpay" gateway and settled by a signature-verified HitPay webhook, so
+    | they are read-only here. Manual payments keep the "manual" gateway and
+    | are confirmed by an authorized merchant/admin. Gateway credentials must
+    | be read from environment variables, never stored in the database or
+    | returned by the API.
     |
     */
 
     'default_gateway' => 'manual',
 
-    'integrated_gateways' => [],
+    'integrated_gateways' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('PAYMENT_INTEGRATED_GATEWAYS', 'hitpay')),
+    ))),
 
     /*
     |--------------------------------------------------------------------------
