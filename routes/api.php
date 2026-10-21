@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\MerchantController;
+use App\Http\Controllers\Api\MerchantDashboardController;
 use App\Http\Controllers\Api\MerchantEmailVerificationController;
 use App\Http\Controllers\Api\MerchantProfileController;
 use App\Http\Controllers\Api\NotificationController;
@@ -69,6 +70,9 @@ Route::prefix('merchant')->group(function (): void {
 
 // Merchant features require a verified email address (admins are not affected; see EnsureMerchantEmailIsVerified).
 Route::middleware(['auth:sanctum', 'merchant.verified'])->prefix('v1')->group(function (): void {
+    // Store overview aggregates (KPIs, charts, recent activity) for the signed-in merchant.
+    Route::get('merchant/dashboard', MerchantDashboardController::class);
+
     // Store profile: reads return the approved record; edits become change requests for admin review.
     Route::get('merchant/profile', [MerchantProfileController::class, 'show']);
     Route::get('merchant/profile/change-requests', [MerchantProfileController::class, 'changeRequests']);
