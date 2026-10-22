@@ -1,0 +1,60 @@
+# SofiaCart admin/merchant API — production stack (see sofiacart-website/DEPLOYMENT.md).
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# - The database is the separate MySQL server (DB_HOST in .env); no local db/phpMyAdmin/Redis.
+# - Port 8000 is published on 127.0.0.1 only: Docker bypasses ufw for published ports, so the
+#   API is reachable from the internet only through the host nginx (HTTPS) at api.sofiacart.ph.
+# - The source is bind-mounted (deploys are `git pull` + restart); .env is read from the repo root.
+name: sofiacart-backend
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: sofiacart-backend:prod
+  working_dir: /var/www
+  volumes:
+    - ./:/var/www
+    - vendor_data:/var/www/vendor
+    - ./docker/php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  restart: unless-stopped
+
+services:
+  app:
+    <<: *app
+    container_name: sofiacart-app
+    command: php-fpm
+
+  # Queued jobs and notifications (QUEUE_CONNECTION=database).
+  queue:
+    <<: *app
+    container_name: sofiacart-queue
+    command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+    depends_on:
+      - app
+
+  # Scheduled tasks, e.g. payments:expire every five minutes.
+  scheduler:
+    <<: *app
+    container_name: sofiacart-scheduler
+    command: php artisan schedule:work
+    depends_on:
+      - app
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: sofiacart-nginx
+    ports:
+      - "127.0.0.1:8000:80"
+    volumes:
+      - ./:/var/www
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  vendor_data:

@@ -3,9 +3,11 @@
 namespace App\Http\Requests;
 
 use App\Enums\LegalDocumentAudience;
+use App\Models\Merchant;
 use App\Services\LegalDocumentService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class RegisterMerchantRequest extends FormRequest
@@ -50,7 +52,9 @@ class RegisterMerchantRequest extends FormRequest
             'province' => ['required', 'string', 'max:255'],
             'zip_code' => ['required', 'string', 'max:10'],
             'store_name' => ['required', 'string', 'max:255'],
-            'store_slug' => ['required', 'regex:'.$slugRegex, 'max:255', 'unique:merchants,store_slug'],
+            // The slug is the store's subdomain (<slug>.sofiacart.ph), so it must be a valid DNS label
+            // (at most 63 characters) and not one of the platform's own subdomains.
+            'store_slug' => ['required', 'regex:'.$slugRegex, 'max:63', Rule::notIn(Merchant::RESERVED_STORE_SLUGS), 'unique:merchants,store_slug'],
             'store_category' => ['required', 'string', 'max:255'],
             'store_description' => ['nullable', 'string'],
             'store_address' => ['required', 'string'],
@@ -125,6 +129,8 @@ class RegisterMerchantRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'store_slug.not_in' => 'This store URL is reserved. Please choose another one.',
+            'store_slug.max' => 'The store URL may not be longer than 63 characters.',
             'accept_terms.accepted' => 'You must accept the Merchant Terms and Conditions to register.',
             'acknowledge_privacy.accepted' => 'You must acknowledge that you have read the Merchant Data Privacy Policy to register.',
         ];

@@ -16,6 +16,17 @@ class Merchant extends Model
     /** @use HasFactory<MerchantFactory> */
     use HasFactory;
 
+    /**
+     * Store slugs that can't be registered: each store is served at <slug>.sofiacart.ph, and these
+     * subdomains belong to the platform itself (keep in sync with sofiacart-website lib/store/host.ts).
+     */
+    public const RESERVED_STORE_SLUGS = [
+        'www', 'api', 'store-api', 'api-admin', 'admin', 'seller', 'sellers', 'merchant', 'merchants',
+        'app', 'mail', 'email', 'smtp', 'imap', 'pop', 'ftp', 'webmail', 'static', 'cdn', 'assets',
+        'media', 'storage', 'help', 'support', 'status', 'blog', 'docs', 'dashboard', 'store', 'stores',
+        'shop', 'sofiacart', 'dev', 'staging', 'test', 'demo', 'beta', 'ns1', 'ns2', 'localhost',
+    ];
+
     protected $fillable = [
         'user_id',
         'business_name',

@@ -227,6 +227,23 @@ class MerchantRegistrationTest extends TestCase
         $this->assertDatabaseCount('user_legal_consents', 0);
     }
 
+    public function test_platform_subdomains_cannot_be_used_as_a_store_url(): void
+    {
+        Storage::fake('public');
+
+        foreach (['www', 'api', 'store-api', 'admin'] as $slug) {
+            $this->post('/api/merchant/register', $this->validPayload(['store_slug' => $slug]), ['Accept' => 'application/json'])
+                ->assertUnprocessable()
+                ->assertInvalid(['store_slug' => 'This store URL is reserved.']);
+        }
+
+        $this->post('/api/merchant/register', $this->validPayload(['store_slug' => str_repeat('a', 64)]), ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertInvalid(['store_slug' => 'may not be longer than 63']);
+
+        $this->assertDatabaseCount('merchants', 0);
+    }
+
     protected function validPayload(array $overrides = []): array
     {
         return [
