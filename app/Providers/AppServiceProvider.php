@@ -24,6 +24,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Default limit for every API route (authenticated endpoints are keyed by user, else IP).
+        RateLimiter::for('api', fn (Request $request): Limit => Limit::perMinute(120)
+            ->by($request->user()?->getAuthIdentifier() ? 'user:'.$request->user()->getAuthIdentifier() : 'ip:'.$request->ip()));
+
         RateLimiter::for('admin-auth', function (Request $request): Limit {
             return Limit::perMinute(5)->by(Str::lower((string) $request->input('email')).'|'.$request->ip());
         });
