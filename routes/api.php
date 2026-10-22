@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Admin\AdminUserController;
 use App\Http\Controllers\Api\Admin\AuthController as AdminAuthController;
 use App\Http\Controllers\Api\Admin\CustomerManagementController;
 use App\Http\Controllers\Api\Admin\DashboardController;
+use App\Http\Controllers\Api\Admin\LegalDocumentController as AdminLegalDocumentController;
 use App\Http\Controllers\Api\Admin\MerchantChangeRequestController;
 use App\Http\Controllers\Api\Admin\MerchantManagementController;
 use App\Http\Controllers\Api\Admin\PlatformReportsController;
@@ -17,6 +18,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\InventoryController;
+use App\Http\Controllers\Api\LegalDocumentController;
 use App\Http\Controllers\Api\MerchantController;
 use App\Http\Controllers\Api\MerchantDashboardController;
 use App\Http\Controllers\Api\MerchantEmailVerificationController;
@@ -56,6 +58,17 @@ Route::prefix('admin/auth')->group(function (): void {
         Route::delete('/sessions/{tokenId}', [AdminAuthController::class, 'revokeSession']);
     });
 });
+
+// Published legal documents (public). Only the current published version is ever served.
+Route::prefix('legal-documents/{audience}')
+    ->whereIn('audience', ['buyer', 'merchant'])
+    ->middleware('throttle:legal-documents')
+    ->name('legal-documents.')
+    ->group(function (): void {
+        Route::get('/', [LegalDocumentController::class, 'index'])->name('index');
+        Route::get('/{type}', [LegalDocumentController::class, 'show'])->whereIn('type', ['terms', 'privacy'])->name('show');
+        Route::get('/{type}/file', [LegalDocumentController::class, 'file'])->whereIn('type', ['terms', 'privacy'])->name('file');
+    });
 
 Route::prefix('merchant')->group(function (): void {
     Route::post('/register', [MerchantController::class, 'register']);
@@ -308,6 +321,28 @@ Route::middleware(['auth:sanctum', 'admin', 'admin.token', 'admin.audit'])->pref
         ->except(['create', 'edit'])
         ->middlewareFor(['index', 'show'], 'admin.permission:permissions.view')
         ->middlewareFor(['store', 'update', 'destroy'], 'admin.permission:permissions.manage');
+
+    // Legal documents (Terms and Conditions, Data Privacy Policy). Mutations are audited by LegalDocumentService.
+    Route::get('/legal-documents', [AdminLegalDocumentController::class, 'index'])
+        ->middleware('admin.permission:legal.view')->name('legal-documents.index');
+    Route::get('/legal-documents/{audience}/{type}/versions', [AdminLegalDocumentController::class, 'versions'])
+        ->whereIn('audience', ['buyer', 'merchant'])->whereIn('type', ['terms', 'privacy'])
+        ->middleware('admin.permission:legal.view')->name('legal-documents.versions');
+    Route::post('/legal-documents/{audience}/{type}/versions', [AdminLegalDocumentController::class, 'store'])
+        ->whereIn('audience', ['buyer', 'merchant'])->whereIn('type', ['terms', 'privacy'])
+        ->middleware('admin.permission:legal.manage')->name('legal-documents.store');
+    Route::get('/legal-documents/versions/{legalDocument}', [AdminLegalDocumentController::class, 'show'])
+        ->whereNumber('legalDocument')
+        ->middleware('admin.permission:legal.view')->name('legal-documents.show');
+    Route::get('/legal-documents/versions/{legalDocument}/file', [AdminLegalDocumentController::class, 'file'])
+        ->whereNumber('legalDocument')
+        ->middleware('admin.permission:legal.view')->name('legal-documents.file');
+    Route::post('/legal-documents/versions/{legalDocument}/publish', [AdminLegalDocumentController::class, 'publish'])
+        ->whereNumber('legalDocument')
+        ->middleware('admin.permission:legal.manage')->name('legal-documents.publish');
+    Route::post('/legal-documents/versions/{legalDocument}/unpublish', [AdminLegalDocumentController::class, 'unpublish'])
+        ->whereNumber('legalDocument')
+        ->middleware('admin.permission:legal.manage')->name('legal-documents.unpublish');
 
     Route::get('/logs', [SystemLogController::class, 'index'])
         ->middleware('admin.permission:logs.view')->name('logs.index');

@@ -2,7 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Enums\LegalDocumentAudience;
+use App\Enums\LegalDocumentType;
 use App\Enums\MerchantStatus;
+use App\Models\LegalDocument;
 use App\Models\Merchant;
 use App\Models\User;
 use App\Notifications\VerifyMerchantEmail;
@@ -10,11 +13,24 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\CreatesLegalDocuments;
 use Tests\TestCase;
 
 class MerchantRegistrationTest extends TestCase
 {
+    use CreatesLegalDocuments;
     use RefreshDatabase;
+
+    /** @var array{terms: LegalDocument, privacy: LegalDocument} */
+    protected array $legal;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Storage::fake('legal');
+        $this->legal = $this->publishLegalDocumentsFor(LegalDocumentAudience::Merchant);
+    }
 
     public function test_merchant_registration_validates_payload(): void
     {
@@ -132,6 +148,85 @@ class MerchantRegistrationTest extends TestCase
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */
+    public function test_registration_records_the_accepted_terms_and_acknowledged_privacy_versions(): void
+    {
+        Storage::fake('public');
+        Notification::fake();
+        $this->travelTo(now()->setMicrosecond(0));
+
+        $this->post('/api/merchant/register', $this->validPayload(), ['Accept' => 'application/json', 'User-Agent' => 'RegistrationTest/1.0'])
+            ->assertCreated();
+
+        $user = User::where('email', 'owner@example.com')->firstOrFail();
+        $consents = $user->legalConsents()->orderBy('type')->get();
+
+        $this->assertCount(2, $consents);
+        [$privacy, $terms] = [$consents->firstWhere('type', LegalDocumentType::Privacy), $consents->firstWhere('type', LegalDocumentType::Terms)];
+        $this->assertSame($this->legal['terms']->id, $terms->legal_document_id);
+        $this->assertSame(1, $terms->version);
+        $this->assertSame('accepted', $terms->action);
+        $this->assertSame($this->legal['privacy']->id, $privacy->legal_document_id);
+        $this->assertSame('acknowledged', $privacy->action);
+        $this->assertSame('merchant_registration', $terms->context);
+        $this->assertTrue($terms->accepted_at->equalTo(now()));
+        $this->assertSame('RegistrationTest/1.0', $terms->user_agent);
+    }
+
+    public function test_registration_requires_accepting_the_terms_and_acknowledging_the_privacy_policy(): void
+    {
+        Storage::fake('public');
+
+        $this->post('/api/merchant/register', $this->validPayload([
+            'accept_terms' => '0',
+            'acknowledge_privacy' => null,
+        ]), ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertInvalid([
+                'accept_terms' => 'You must accept the Merchant Terms and Conditions to register.',
+                'acknowledge_privacy' => 'You must acknowledge',
+            ]);
+
+        $this->assertDatabaseMissing('users', ['email' => 'owner@example.com']);
+        $this->assertDatabaseCount('user_legal_consents', 0);
+    }
+
+    public function test_registration_rejects_versions_that_are_not_the_published_ones(): void
+    {
+        Storage::fake('public');
+        $buyerTerms = $this->publishedLegalDocument(LegalDocumentAudience::Buyer, LegalDocumentType::Terms);
+
+        // A buyer document, or a version that has since been replaced, cannot be accepted.
+        $this->post('/api/merchant/register', $this->validPayload(['terms_document_id' => (string) $buyerTerms->id]), ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertInvalid(['terms_document_id' => 'has been updated']);
+
+        $this->legal['terms']->forceFill(['status' => 'superseded', 'is_current' => null])->save();
+        $this->publishedLegalDocument(LegalDocumentAudience::Merchant, LegalDocumentType::Terms, version: 2);
+
+        $this->post('/api/merchant/register', $this->validPayload(), ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertInvalid(['terms_document_id' => 'has been updated']);
+
+        $this->assertDatabaseMissing('users', ['email' => 'owner@example.com']);
+    }
+
+    public function test_registration_is_unavailable_while_the_terms_are_unpublished(): void
+    {
+        Storage::fake('public');
+        $this->legal['terms']->forceFill(['status' => 'unpublished', 'is_current' => null])->save();
+
+        $this->post('/api/merchant/register', $this->validPayload(), ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertInvalid(['terms_document_id' => 'temporarily unavailable']);
+
+        // The requirement can be switched off by configuration (no consent records are written then).
+        config(['legal_documents.require_registration_acceptance' => false]);
+        Notification::fake();
+
+        $this->post('/api/merchant/register', $this->validPayload(), ['Accept' => 'application/json'])->assertCreated();
+        $this->assertDatabaseCount('user_legal_consents', 0);
+    }
+
     protected function validPayload(array $overrides = []): array
     {
         return [
@@ -166,6 +261,10 @@ class MerchantRegistrationTest extends TestCase
             'business_permit' => UploadedFile::fake()->image('permit.png'),
             'store_logo' => UploadedFile::fake()->image('logo.png'),
             'government_id' => UploadedFile::fake()->image('government-id.png'),
+            'accept_terms' => '1',
+            'terms_document_id' => (string) $this->legal['terms']->id,
+            'acknowledge_privacy' => '1',
+            'privacy_document_id' => (string) $this->legal['privacy']->id,
             ...$overrides,
         ];
     }

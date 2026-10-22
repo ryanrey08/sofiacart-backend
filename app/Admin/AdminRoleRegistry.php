@@ -43,6 +43,7 @@ final class AdminRoleRegistry
                     AdminPermissionRegistry::ROLES_VIEW,
                     AdminPermissionRegistry::PERMISSIONS_VIEW,
                     AdminPermissionRegistry::LOGS_VIEW,
+                    AdminPermissionRegistry::LEGAL_VIEW,
                 ],
             ],
             [

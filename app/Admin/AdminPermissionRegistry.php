@@ -64,6 +64,10 @@ final class AdminPermissionRegistry
 
     public const LOGS_VIEW = 'logs.view';
 
+    public const LEGAL_VIEW = 'legal.view';
+
+    public const LEGAL_MANAGE = 'legal.manage';
+
     public static function definitions(): array
     {
         return [
@@ -97,6 +101,8 @@ final class AdminPermissionRegistry
             ['name' => self::PERMISSIONS_VIEW, 'group' => 'permissions', 'label' => 'View permissions'],
             ['name' => self::PERMISSIONS_MANAGE, 'group' => 'permissions', 'label' => 'Manage permissions'],
             ['name' => self::LOGS_VIEW, 'group' => 'logs', 'label' => 'View audit logs'],
+            ['name' => self::LEGAL_VIEW, 'group' => 'legal', 'label' => 'View legal documents'],
+            ['name' => self::LEGAL_MANAGE, 'group' => 'legal', 'label' => 'Upload and publish legal documents'],
         ];
     }
 }

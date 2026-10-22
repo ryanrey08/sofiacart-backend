@@ -47,6 +47,16 @@ return [
             'report' => false,
         ],
 
+        // Private, versioned legal documents (Terms, Privacy Policy). Never linked publicly: files are
+        // streamed by LegalDocumentService, so the disk has no URL and is not served directly.
+        'legal' => [
+            'driver' => 'local',
+            'root' => env('LEGAL_DOCUMENTS_ROOT', storage_path('app/private/legal-documents')),
+            'visibility' => 'private',
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

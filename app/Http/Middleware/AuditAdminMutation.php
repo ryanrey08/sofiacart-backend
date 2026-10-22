@@ -28,6 +28,10 @@ class AuditAdminMutation
         // Logged by ProductApprovalService with the decision, reason and changed fields.
         'admin.products.approval',
         'admin.product-change-requests.status',
+        // Logged by LegalDocumentService with the audience, type, version and file checksum.
+        'admin.legal-documents.store',
+        'admin.legal-documents.publish',
+        'admin.legal-documents.unpublish',
         // Marking one's own notifications read is not an administrative mutation.
         'admin.notifications.read',
         'admin.notifications.read-all',

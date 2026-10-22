@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\LegalDocumentAudience;
 use App\Enums\MerchantStatus;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
@@ -10,6 +11,7 @@ use App\Http\Resources\MerchantResource;
 use App\Http\Resources\UserResource;
 use App\Models\Merchant;
 use App\Models\User;
+use App\Services\LegalDocumentService;
 use App\Services\MerchantEmailVerificationService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
@@ -21,6 +23,7 @@ class MerchantController extends Controller
      * Creates the merchant user (email unverified) and the merchant application (pending admin
      * review), then emails a verification link to the address entered on the form. Email
      * verification and admin approval are separate: verifying never approves the store.
+     * The accepted Terms / acknowledged Privacy Policy versions are recorded in the same transaction.
      */
     public function register(RegisterMerchantRequest $request, MerchantEmailVerificationService $verification): JsonResponse
     {
@@ -63,6 +66,16 @@ class MerchantController extends Controller
                 'email' => $validated['email'],
                 'password' => $validated['password'],
             ]);
+
+            if ($request->requiresLegalAcceptance()) {
+                app(LegalDocumentService::class)->recordRegistrationConsents(
+                    $user,
+                    LegalDocumentAudience::Merchant,
+                    (int) $validated['terms_document_id'],
+                    (int) $validated['privacy_document_id'],
+                    $request,
+                );
+            }
 
             return Merchant::create([
                 'user_id' => $user->id,

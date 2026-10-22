@@ -2,8 +2,11 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\LegalDocumentAudience;
+use App\Services\LegalDocumentService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Validator;
 
 class RegisterMerchantRequest extends FormRequest
 {
@@ -67,6 +70,68 @@ class RegisterMerchantRequest extends FormRequest
             'store_logo' => ['required', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
             'store_banner' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:5120'],
             'government_id' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+            ...$this->legalRules(),
         ];
+    }
+
+    /**
+     * The merchant must accept the published merchant Terms and acknowledge the published merchant
+     * Privacy Policy, naming the exact versions shown on the form (recorded as consent records).
+     *
+     * @return array<string, array<int, string>>
+     */
+    protected function legalRules(): array
+    {
+        if (! $this->requiresLegalAcceptance()) {
+            return [];
+        }
+
+        return [
+            'accept_terms' => ['accepted'],
+            'terms_document_id' => ['required', 'integer'],
+            'acknowledge_privacy' => ['accepted'],
+            'privacy_document_id' => ['required', 'integer'],
+        ];
+    }
+
+    /**
+     * @return array<int, callable>
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                if (! $this->requiresLegalAcceptance()
+                    || $validator->errors()->hasAny(['terms_document_id', 'privacy_document_id'])) {
+                    return;
+                }
+
+                $errors = app(LegalDocumentService::class)->registrationErrors(
+                    LegalDocumentAudience::Merchant,
+                    $this->input('terms_document_id'),
+                    $this->input('privacy_document_id'),
+                );
+
+                foreach ($errors as $field => $message) {
+                    $validator->errors()->add($field, $message);
+                }
+            },
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'accept_terms.accepted' => 'You must accept the Merchant Terms and Conditions to register.',
+            'acknowledge_privacy.accepted' => 'You must acknowledge that you have read the Merchant Data Privacy Policy to register.',
+        ];
+    }
+
+    public function requiresLegalAcceptance(): bool
+    {
+        return (bool) config('legal_documents.require_registration_acceptance');
     }
 }

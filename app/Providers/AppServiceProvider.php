@@ -33,6 +33,11 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(5)->by('user:'.($request->user()?->getKey() ?? $request->ip()));
         });
 
+        // Public legal document metadata and files.
+        RateLimiter::for('legal-documents', function (Request $request): Limit {
+            return Limit::perMinute(60)->by('ip:'.$request->ip());
+        });
+
         // Verification tokens are 64 random characters; this only slows automated guessing.
         RateLimiter::for('merchant-email-verify', function (Request $request): Limit {
             return Limit::perMinute(10)->by('ip:'.$request->ip());

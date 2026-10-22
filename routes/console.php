@@ -1,12 +1,17 @@
 <?php
 
+use App\Admin\AdminPermissionRegistry;
 use App\Admin\AdminRoleRegistry;
+use App\Enums\LegalDocumentAudience;
+use App\Enums\LegalDocumentType;
 use App\Enums\UserRole;
 use App\Models\AdminRole;
 use App\Models\User;
+use App\Services\LegalDocumentService;
 use App\Services\PaymentService;
 use Database\Seeders\AdminAuthorizationSeeder;
 use Illuminate\Foundation\Inspiring;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
@@ -86,6 +91,70 @@ Artisan::command('admin:provision-super-admin {email} {name} {--phone=} {--force
 
     return 0;
 })->purpose('Provision a Super Admin without seeding a permanent password');
+
+Artisan::command(
+    'legal-documents:import {audience : buyer or merchant} {type : terms or privacy} {path : PDF or .docx file} {--admin= : Email of the admin recorded as uploader} {--label= : Version label printed in the document} {--effective-date= : YYYY-MM-DD} {--publish}',
+    function (LegalDocumentService $documents): int {
+        $audience = LegalDocumentAudience::tryFrom((string) $this->argument('audience'));
+        $type = LegalDocumentType::tryFrom((string) $this->argument('type'));
+        $path = (string) $this->argument('path');
+
+        if (! $audience || ! $type) {
+            $this->error('Audience must be buyer or merchant, and type must be terms or privacy.');
+
+            return 1;
+        }
+
+        if (! is_file($path) || ! is_readable($path)) {
+            $this->error("Cannot read {$path}.");
+
+            return 1;
+        }
+
+        $admin = User::query()->where('email', (string) $this->option('admin'))->first();
+        if (! $admin?->hasAdminPermission(AdminPermissionRegistry::LEGAL_MANAGE)) {
+            $this->error('--admin must be the email of an active admin with the legal.manage permission.');
+
+            return 1;
+        }
+
+        $effectiveDate = $this->option('effective-date');
+        if ($effectiveDate !== null && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $effectiveDate)) {
+            $this->error('--effective-date must be YYYY-MM-DD.');
+
+            return 1;
+        }
+
+        // Same validation as an upload through the admin panel; the file is copied, never modified.
+        $file = new UploadedFile($path, basename($path), null, null, true);
+        if ($documents->detectFormat($file) === null) {
+            $this->error('The file is not a valid PDF or Word (.docx) document.');
+
+            return 1;
+        }
+
+        if ($file->getSize() > config('legal_documents.max_kilobytes') * 1024) {
+            $this->error('The file is larger than the allowed upload size.');
+
+            return 1;
+        }
+
+        $document = $documents->upload($audience, $type, $file, [
+            'version_label' => $this->option('label') ?: null,
+            'effective_date' => $effectiveDate ?: null,
+            'notes' => 'Imported from '.basename($path).' with legal-documents:import.',
+        ], $admin);
+
+        $this->info("Uploaded {$audience->label()} {$type->label()} version {$document->version} (sha256 {$document->checksum}).");
+
+        if ($this->option('publish')) {
+            $documents->publish($document, $admin);
+            $this->info("Published version {$document->version}.");
+        }
+
+        return 0;
+    },
+)->purpose('Import a legal document file as a new version (optionally publishing it)');
 
 Artisan::command('payments:expire', function (PaymentService $payments): int {
     $this->info("Expired {$payments->expirePendingPayments()} pending payment(s).");
