@@ -45,7 +45,7 @@ class StoreProductRequest extends FormRequest
             'width' => ['nullable', 'numeric', 'min:0'],
             'height' => ['nullable', 'numeric', 'min:0'],
             'images' => ['nullable', 'array'],
-            'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:'.config('uploads.image_max_kilobytes')],
             'main_image_index' => ['nullable', 'integer', 'min:0'],
             'variants' => ['nullable', 'array'],
             'variants.*.sku' => ['required', 'string', 'max:255', 'distinct', Rule::unique('product_variants', 'sku')],

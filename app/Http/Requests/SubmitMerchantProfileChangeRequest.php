@@ -47,10 +47,10 @@ class SubmitMerchantProfileChangeRequest extends FormRequest
             'owner_email' => ['sometimes', 'required', 'email', 'max:255'],
             'owner_phone' => ['sometimes', 'required', 'regex:'.$phoneRegex],
             // Replacement files, same limits as registration. Held privately until approved.
-            'store_logo' => ['sometimes', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
-            'store_banner' => ['sometimes', 'image', 'mimes:jpg,jpeg,png', 'max:5120'],
-            'business_permit' => ['sometimes', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
-            'government_id' => ['sometimes', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+            'store_logo' => ['sometimes', 'image', 'mimes:jpg,jpeg,png', 'max:'.config('uploads.image_max_kilobytes')],
+            'store_banner' => ['sometimes', 'image', 'mimes:jpg,jpeg,png', 'max:'.config('uploads.image_max_kilobytes')],
+            'business_permit' => ['sometimes', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:'.config('uploads.image_max_kilobytes')],
+            'government_id' => ['sometimes', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:'.config('uploads.image_max_kilobytes')],
         ];
 
         foreach (MerchantProfileChangeService::ADMIN_CONTROLLED_FIELDS as $field) {

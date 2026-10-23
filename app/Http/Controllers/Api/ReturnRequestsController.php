@@ -72,7 +72,7 @@ class ReturnRequestsController extends Controller
             'items.*.order_item_id' => ['required', 'integer', 'distinct'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'evidence' => ['sometimes', 'array', 'max:5'],
-            'evidence.*' => ['file', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'evidence.*' => ['file', 'mimes:jpg,jpeg,png,webp', 'max:'.config('uploads.image_max_kilobytes')],
         ]);
         $merchantId = $this->merchantIdForWrite($request, $data['merchant_id'] ?? null);
         $paths = [];

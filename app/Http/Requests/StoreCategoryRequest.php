@@ -27,7 +27,7 @@ class StoreCategoryRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['nullable', 'string', 'max:255', 'regex:'.self::SLUG_PATTERN, $this->uniqueSlugRule()],
             'description' => $this->descriptionRules(),
-            'image' => ['nullable', 'image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
+            'image' => ['nullable', 'image', 'mimes:png,jpg,jpeg,webp', 'max:'.config('uploads.image_max_kilobytes')],
             'sort_order' => ['sometimes', 'integer', 'min:0'],
             'is_active' => ['sometimes', 'boolean'],
             'show_in_nav' => ['sometimes', 'boolean'],

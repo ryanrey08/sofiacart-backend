@@ -45,7 +45,7 @@ class UpdateProductRequest extends FormRequest
             'width' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'height' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'images' => ['nullable', 'array'],
-            'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:'.config('uploads.image_max_kilobytes')],
             'main_image_index' => ['nullable', 'integer', 'min:0'],
             'image_ids' => ['sometimes', 'array'],
             'image_ids.*' => ['integer', 'distinct'],

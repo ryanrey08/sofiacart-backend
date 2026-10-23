@@ -373,7 +373,7 @@ class MerchantProfileChangeRequestTest extends TestCase
 
         $this->post('/api/v1/merchant/profile/change-requests', [
             'store_logo' => UploadedFile::fake()->create('logo.gif', 10, 'image/gif'),
-            'government_id' => UploadedFile::fake()->create('id.pdf', 6000, 'application/pdf'),
+            'government_id' => UploadedFile::fake()->create('id.pdf', 10241, 'application/pdf'),
         ], ['Accept' => 'application/json'])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['store_logo', 'government_id']);

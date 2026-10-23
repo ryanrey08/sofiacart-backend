@@ -85,9 +85,15 @@ class CategoryManagementTest extends TestCase
 
         $this->postJson('/api/v1/categories', [
             'name' => 'Large image',
-            'image' => UploadedFile::fake()->image('category.jpg')->size(2049),
+            'image' => UploadedFile::fake()->image('category.jpg')->size(10241),
         ])->assertUnprocessable()
             ->assertJsonValidationErrors(['image']);
+
+        // Images up to 10 MB are accepted.
+        $this->postJson('/api/v1/categories', [
+            'name' => 'Ten megabyte image',
+            'image' => UploadedFile::fake()->image('category.jpg')->size(10240),
+        ])->assertCreated();
 
         $this->postJson('/api/v1/categories', [
             'name' => 'Rich text within limit',

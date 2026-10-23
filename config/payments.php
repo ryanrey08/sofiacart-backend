@@ -61,7 +61,8 @@ return [
         'disk' => 'local',
         'directory' => 'payment-proofs',
         'max_files' => 5,
-        'max_kilobytes' => 5120,
+        // Same limit as every other image upload (config/uploads.php).
+        'max_kilobytes' => (int) env('UPLOAD_IMAGE_MAX_KB', 10240),
     ],
 
 ];

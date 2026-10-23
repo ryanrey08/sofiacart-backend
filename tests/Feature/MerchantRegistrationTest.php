@@ -227,6 +227,27 @@ class MerchantRegistrationTest extends TestCase
         $this->assertDatabaseCount('user_legal_consents', 0);
     }
 
+    public function test_registration_images_and_documents_may_be_up_to_10_mb_each(): void
+    {
+        Storage::fake('public');
+        Notification::fake();
+
+        $this->post('/api/merchant/register', $this->validPayload([
+            'store_logo' => UploadedFile::fake()->image('logo.png')->size(10241),
+            'government_id' => UploadedFile::fake()->create('id.pdf', 10241, 'application/pdf'),
+        ]), ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertInvalid(['store_logo', 'government_id'])
+            ->assertValid(['business_permit']);
+
+        $this->post('/api/merchant/register', $this->validPayload([
+            'business_permit' => UploadedFile::fake()->create('permit.pdf', 10240, 'application/pdf'),
+            'store_logo' => UploadedFile::fake()->image('logo.png')->size(10240),
+            'store_banner' => UploadedFile::fake()->image('banner.jpg')->size(10240),
+            'government_id' => UploadedFile::fake()->image('government-id.png')->size(10240),
+        ]), ['Accept' => 'application/json'])->assertCreated();
+    }
+
     public function test_platform_subdomains_cannot_be_used_as_a_store_url(): void
     {
         Storage::fake('public');

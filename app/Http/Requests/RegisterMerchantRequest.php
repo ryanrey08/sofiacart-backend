@@ -70,10 +70,10 @@ class RegisterMerchantRequest extends FormRequest
             'government_id_type' => ['required', 'string', 'max:255'],
             'government_id_number' => ['required', 'string', 'max:255'],
             'government_id_expiry_date' => ['required', 'date', 'after:today'],
-            'business_permit' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
-            'store_logo' => ['required', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
-            'store_banner' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:5120'],
-            'government_id' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+            'business_permit' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:'.config('uploads.image_max_kilobytes')],
+            'store_logo' => ['required', 'image', 'mimes:jpg,jpeg,png', 'max:'.config('uploads.image_max_kilobytes')],
+            'store_banner' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:'.config('uploads.image_max_kilobytes')],
+            'government_id' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:'.config('uploads.image_max_kilobytes')],
             ...$this->legalRules(),
         ];
     }
