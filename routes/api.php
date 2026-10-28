@@ -8,10 +8,12 @@ use App\Http\Controllers\Api\Admin\AuthController as AdminAuthController;
 use App\Http\Controllers\Api\Admin\CustomerManagementController;
 use App\Http\Controllers\Api\Admin\DashboardController;
 use App\Http\Controllers\Api\Admin\LegalDocumentController as AdminLegalDocumentController;
+use App\Http\Controllers\Api\Admin\LocationController;
 use App\Http\Controllers\Api\Admin\MerchantChangeRequestController;
 use App\Http\Controllers\Api\Admin\MerchantManagementController;
 use App\Http\Controllers\Api\Admin\PlatformReportsController;
 use App\Http\Controllers\Api\Admin\ProductApprovalController;
+use App\Http\Controllers\Api\Admin\RegistrationOptionController;
 use App\Http\Controllers\Api\Admin\SettingController;
 use App\Http\Controllers\Api\Admin\SystemLogController;
 use App\Http\Controllers\Api\AuthController;
@@ -28,6 +30,7 @@ use App\Http\Controllers\Api\OrdersController;
 use App\Http\Controllers\Api\PaymentsController;
 use App\Http\Controllers\Api\ProductsController;
 use App\Http\Controllers\Api\RefundsController;
+use App\Http\Controllers\Api\RegistrationOptionsController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReturnRequestsController;
 use App\Http\Controllers\Api\TransactionsController;
@@ -69,6 +72,13 @@ Route::prefix('legal-documents/{audience}')
         Route::get('/{type}', [LegalDocumentController::class, 'show'])->whereIn('type', ['terms', 'privacy'])->name('show');
         Route::get('/{type}/file', [LegalDocumentController::class, 'file'])->whereIn('type', ['terms', 'privacy'])->name('file');
     });
+
+// Dropdown lists for merchant registration and the Store Profile form (public; active entries only).
+Route::middleware('throttle:legal-documents')->group(function (): void {
+    Route::get('/registration-options', [RegistrationOptionsController::class, 'index'])->name('registration-options.index');
+    Route::get('/registration-options/provinces/{province}/cities', [RegistrationOptionsController::class, 'cities'])
+        ->whereNumber('province')->name('registration-options.cities');
+});
 
 Route::prefix('merchant')->group(function (): void {
     Route::post('/register', [MerchantController::class, 'register']);
@@ -343,6 +353,34 @@ Route::middleware(['auth:sanctum', 'admin', 'admin.token', 'admin.audit'])->pref
     Route::post('/legal-documents/versions/{legalDocument}/unpublish', [AdminLegalDocumentController::class, 'unpublish'])
         ->whereNumber('legalDocument')
         ->middleware('admin.permission:legal.manage')->name('legal-documents.unpublish');
+
+    // Merchant registration dropdowns and locations (Platform Settings permissions).
+    Route::get('/registration-options', [RegistrationOptionController::class, 'index'])
+        ->middleware('admin.permission:settings.view')->name('registration-options.index');
+    Route::post('/registration-options', [RegistrationOptionController::class, 'store'])
+        ->middleware('admin.permission:settings.manage')->name('registration-options.store');
+    Route::put('/registration-options/order', [RegistrationOptionController::class, 'reorder'])
+        ->middleware('admin.permission:settings.manage')->name('registration-options.reorder');
+    Route::patch('/registration-options/{registrationOption}', [RegistrationOptionController::class, 'update'])
+        ->whereNumber('registrationOption')->middleware('admin.permission:settings.manage')->name('registration-options.update');
+    Route::delete('/registration-options/{registrationOption}', [RegistrationOptionController::class, 'destroy'])
+        ->whereNumber('registrationOption')->middleware('admin.permission:settings.manage')->name('registration-options.destroy');
+    Route::get('/provinces', [LocationController::class, 'provinces'])
+        ->middleware('admin.permission:settings.view')->name('provinces.index');
+    Route::post('/provinces', [LocationController::class, 'storeProvince'])
+        ->middleware('admin.permission:settings.manage')->name('provinces.store');
+    Route::patch('/provinces/{province}', [LocationController::class, 'updateProvince'])
+        ->whereNumber('province')->middleware('admin.permission:settings.manage')->name('provinces.update');
+    Route::delete('/provinces/{province}', [LocationController::class, 'destroyProvince'])
+        ->whereNumber('province')->middleware('admin.permission:settings.manage')->name('provinces.destroy');
+    Route::get('/provinces/{province}/cities', [LocationController::class, 'cities'])
+        ->whereNumber('province')->middleware('admin.permission:settings.view')->name('cities.index');
+    Route::post('/provinces/{province}/cities', [LocationController::class, 'storeCity'])
+        ->whereNumber('province')->middleware('admin.permission:settings.manage')->name('cities.store');
+    Route::patch('/cities/{city}', [LocationController::class, 'updateCity'])
+        ->whereNumber('city')->middleware('admin.permission:settings.manage')->name('cities.update');
+    Route::delete('/cities/{city}', [LocationController::class, 'destroyCity'])
+        ->whereNumber('city')->middleware('admin.permission:settings.manage')->name('cities.destroy');
 
     Route::get('/logs', [SystemLogController::class, 'index'])
         ->middleware('admin.permission:logs.view')->name('logs.index');

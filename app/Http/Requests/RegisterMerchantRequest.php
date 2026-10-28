@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Enums\LegalDocumentAudience;
 use App\Models\Merchant;
 use App\Services\LegalDocumentService;
+use App\Services\RegistrationOptionsService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -75,6 +76,9 @@ class RegisterMerchantRequest extends FormRequest
             'store_banner' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:'.config('uploads.image_max_kilobytes')],
             'government_id' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:'.config('uploads.image_max_kilobytes')],
             ...$this->legalRules(),
+            // Business type, categories, government ID type and province must be active entries of
+            // the Super Admin-managed lists (overrides the plain string rules above).
+            ...app(RegistrationOptionsService::class)->rules(),
         ];
     }
 
@@ -104,6 +108,8 @@ class RegisterMerchantRequest extends FormRequest
     public function after(): array
     {
         return [
+            // The city must belong to the chosen province's city list (when it has one).
+            fn (Validator $validator) => app(RegistrationOptionsService::class)->validateCity($validator, $this->all()),
             function (Validator $validator): void {
                 if (! $this->requiresLegalAcceptance()
                     || $validator->errors()->hasAny(['terms_document_id', 'privacy_document_id'])) {
@@ -129,6 +135,7 @@ class RegisterMerchantRequest extends FormRequest
     public function messages(): array
     {
         return [
+            ...app(RegistrationOptionsService::class)->messages(),
             'store_slug.not_in' => 'This store URL is reserved. Please choose another one.',
             'store_slug.max' => 'The store URL may not be longer than 63 characters.',
             'accept_terms.accepted' => 'You must accept the Merchant Terms and Conditions to register.',

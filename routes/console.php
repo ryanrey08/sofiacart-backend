@@ -9,6 +9,7 @@ use App\Models\AdminRole;
 use App\Models\User;
 use App\Services\LegalDocumentService;
 use App\Services\PaymentService;
+use App\Services\PsgcLocationImporter;
 use Database\Seeders\AdminAuthorizationSeeder;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\UploadedFile;
@@ -155,6 +156,17 @@ Artisan::command(
         return 0;
     },
 )->purpose('Import a legal document file as a new version (optionally publishing it)');
+
+// Adds PSGC provinces and cities/municipalities that are missing from the registration lists.
+Artisan::command('locations:import-psgc {--path= : JSON file to import (default database/data/psgc-locations.json)}', function (PsgcLocationImporter $importer): int {
+    $result = $importer->import($this->option('path') ?: null);
+
+    $this->info($result['source']);
+    $this->line("Provinces: {$result['provinces_added']} added, {$result['provinces_matched']} already listed.");
+    $this->line("Cities/municipalities: {$result['cities_added']} added, {$result['cities_matched']} already listed.");
+
+    return 0;
+})->purpose('Import PSGC provinces and cities into the merchant registration lists');
 
 Artisan::command('payments:expire', function (PaymentService $payments): int {
     $this->info("Expired {$payments->expirePendingPayments()} pending payment(s).");

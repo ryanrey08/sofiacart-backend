@@ -4,9 +4,11 @@ namespace App\Http\Requests;
 
 use App\Models\MerchantChangeRequest;
 use App\Services\MerchantProfileChangeService;
+use App\Services\RegistrationOptionsService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Validator;
 
 class SubmitMerchantProfileChangeRequest extends FormRequest
 {
@@ -53,11 +55,30 @@ class SubmitMerchantProfileChangeRequest extends FormRequest
             'government_id' => ['sometimes', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:'.config('uploads.image_max_kilobytes')],
         ];
 
+        // Dropdown fields must use the Super Admin-managed lists, as at registration.
+        $rules = [...$rules, ...app(RegistrationOptionsService::class)->rules(partial: true)];
+
         foreach (MerchantProfileChangeService::ADMIN_CONTROLLED_FIELDS as $field) {
             $rules[$field] = ['prohibited'];
         }
 
         return $rules;
+    }
+
+    /**
+     * @return array<int, callable>
+     */
+    public function after(): array
+    {
+        return [
+            // A new city must belong to the new province, or to the store's current one.
+            fn (Validator $validator) => app(RegistrationOptionsService::class)->validateCity(
+                $validator,
+                $this->all(),
+                $this->user()?->merchant?->province,
+                $this->user()?->merchant?->city,
+            ),
+        ];
     }
 
     /**
@@ -89,6 +110,7 @@ class SubmitMerchantProfileChangeRequest extends FormRequest
     public function messages(): array
     {
         return [
+            ...app(RegistrationOptionsService::class)->messages(),
             '*.prohibited' => 'This field can only be changed by a SofiaCart administrator.',
             'contact_phone.regex' => 'Enter a Philippine mobile number such as 09171234567 or +639171234567.',
             'owner_phone.regex' => 'Enter a Philippine mobile number such as 09171234567 or +639171234567.',
