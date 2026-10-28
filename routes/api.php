@@ -175,6 +175,9 @@ Route::middleware(['auth:sanctum', 'admin', 'admin.token', 'admin.audit'])->pref
     Route::patch('/merchants/{merchant}/status', [MerchantManagementController::class, 'updateStatus'])
         ->middleware('admin.permission:merchants.manage')
         ->name('merchants.status');
+    // Direct edit by an admin: applied immediately, no approval (merchant edits go through change requests).
+    Route::post('/merchants/{merchant}/profile', [MerchantManagementController::class, 'updateProfile'])
+        ->middleware('admin.permission:merchants.manage')->name('merchants.profile.update');
     Route::get('/merchants/{merchant}/onboarding-history', [MerchantManagementController::class, 'onboardingHistory'])
         ->middleware('admin.permission:merchants.view')->name('merchants.history');
     Route::get('/merchants/{merchant}/documents/{document}', [MerchantManagementController::class, 'document'])

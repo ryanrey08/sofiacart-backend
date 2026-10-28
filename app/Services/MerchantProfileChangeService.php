@@ -11,6 +11,8 @@ use App\Models\MerchantChangeRequest;
 use App\Models\User;
 use App\Notifications\MerchantProfileChangeReviewed;
 use App\Notifications\MerchantProfileChangeSubmitted;
+use App\Notifications\MerchantProfileUpdatedByAdmin;
+use DateTimeInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
@@ -74,6 +76,21 @@ class MerchantProfileChangeService
         'government_id_number',
         'government_id_expiry_date',
         'government_id_path',
+    ];
+
+    /**
+     * Fields a SofiaCart admin may change directly, without an approval step: everything a merchant
+     * may request plus the compliance details. The store URL (it is the store's subdomain, with its
+     * own DNS record and certificate), the owner account and the onboarding status are not edited here.
+     */
+    public const ADMIN_EDITABLE_FIELDS = [
+        ...self::EDITABLE_FIELDS,
+        'tin',
+        'business_permit_number',
+        'owner_birth_date',
+        'government_id_type',
+        'government_id_number',
+        'government_id_expiry_date',
     ];
 
     protected const PENDING_DISK = 'local';
@@ -170,6 +187,66 @@ class MerchantProfileChangeService
         $this->notify($this->reviewers(), new MerchantProfileChangeSubmitted($changeRequest, $merchant->fresh()));
 
         return $changeRequest;
+    }
+
+    /**
+     * An admin's edit: changed fields and replacement documents are written to the live record
+     * straight away, with no approval step. Returns the changed field and document names (empty
+     * when nothing differed from the current values).
+     *
+     * @param  array<string, mixed>  $input  validated admin-editable fields
+     * @param  array<string, UploadedFile>  $uploads  replacement documents keyed by document name
+     * @return array<int, string>
+     */
+    public function adminUpdate(Merchant $merchant, User $admin, array $input, array $uploads = [], ?Request $request = null): array
+    {
+        $published = [];
+
+        try {
+            [$fields, $locked] = DB::transaction(function () use ($merchant, $admin, $input, $uploads, $request, &$published): array {
+                $locked = Merchant::query()->lockForUpdate()->findOrFail($merchant->id);
+
+                [$changes] = $this->diff($locked, $input, self::ADMIN_EDITABLE_FIELDS);
+                $uploads = array_intersect_key($uploads, self::documents());
+
+                if ($changes === [] && $uploads === []) {
+                    throw ValidationException::withMessages([
+                        'changes' => ['No changes to save. Edit at least one field or upload a file.'],
+                    ]);
+                }
+
+                $updates = $changes;
+                foreach ($uploads as $document => $upload) {
+                    $path = $upload->store('merchants/'.($locked->store_slug ?: $locked->id), self::LIVE_DISK);
+                    $published[] = $path;
+                    $updates[self::documents()[$document]] = $path;
+                }
+
+                $locked->update($updates);
+                $fields = [...array_keys($changes), ...array_keys($uploads)];
+
+                $this->auditLogger->log(
+                    'admin.merchants.profile_updated',
+                    $admin,
+                    $locked,
+                    $request,
+                    'Merchant details edited by an admin (applied without approval).',
+                    ['fields' => $fields],
+                );
+
+                return [$fields, $locked];
+            });
+        } catch (Throwable $exception) {
+            Storage::disk(self::LIVE_DISK)->delete($published);
+
+            throw $exception;
+        }
+
+        if ($locked->user) {
+            $this->notify(collect([$locked->user]), new MerchantProfileUpdatedByAdmin($locked, $fields));
+        }
+
+        return $fields;
     }
 
     /**
@@ -433,14 +510,15 @@ class MerchantProfileChangeService
 
     /**
      * @param  array<string, mixed>  $input
+     * @param  array<int, string>  $fields
      * @return array{0: array<string, mixed>, 1: array<string, mixed>}
      */
-    protected function diff(Merchant $merchant, array $input): array
+    protected function diff(Merchant $merchant, array $input, array $fields = self::EDITABLE_FIELDS): array
     {
         $changes = [];
         $original = [];
 
-        foreach (array_intersect_key($input, array_flip(self::EDITABLE_FIELDS)) as $field => $value) {
+        foreach (array_intersect_key($input, array_flip($fields)) as $field => $value) {
             $requested = $this->normalize($field, $value);
             $current = $this->normalize($field, $merchant->getAttribute($field));
 
@@ -486,6 +564,11 @@ class MerchantProfileChangeService
 
         if ($value === null) {
             return null;
+        }
+
+        // Date columns (owner birth date, ID expiry) are compared and stored as Y-m-d.
+        if ($value instanceof DateTimeInterface) {
+            return $value->format('Y-m-d');
         }
 
         $value = trim(str_replace(["\r\n", "\r"], "\n", (string) $value));

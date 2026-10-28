@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\RegistrationOptionType;
 use App\Models\City;
+use App\Models\Merchant;
 use App\Models\Province;
 use App\Models\RegistrationOption;
 use Illuminate\Support\Str;
@@ -85,6 +86,28 @@ class RegistrationOptionsService
         $rules['city'] = [...$presence, 'string', 'max:255'];
 
         return $rules;
+    }
+
+    /**
+     * Names of the list-checked fields in $input that still hold the store's saved value. Edit forms
+     * resend every field, and a store may keep a value that was renamed, hidden or never listed (it
+     * registered before the lists existed), so only changed values are checked against the lists.
+     *
+     * @param  array<string, mixed>  $input
+     * @return array<int, string>
+     */
+    public function unchangedFields(array $input, ?Merchant $merchant): array
+    {
+        if (! $merchant) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            [...array_keys(self::FIELDS), 'province', 'city'],
+            fn (string $field) => array_key_exists($field, $input)
+                && is_string($input[$field])
+                && trim($input[$field]) === trim((string) $merchant->getAttribute($field)),
+        ));
     }
 
     /**

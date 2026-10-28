@@ -134,6 +134,29 @@ class RegistrationOptionsTest extends TestCase
             ->assertStatus(422)->assertInvalid('government_id_type');
     }
 
+    public function test_stores_keeping_unlisted_values_can_still_save_other_changes(): void
+    {
+        Notification::fake();
+        $merchant = Merchant::factory()->create([
+            'status' => MerchantStatus::Verified,
+            'province' => 'Metro Manila',
+            'city' => 'Makati',
+            'business_category' => 'Retail',
+            'store_category' => 'Groceries',
+            'business_type' => 'Sole Proprietorship',
+        ]);
+        Sanctum::actingAs($merchant->user);
+
+        // The form resends every field; unchanged unlisted values are not re-checked.
+        $this->postJson('/api/v1/merchant/profile/change-requests', [
+            'business_name' => 'New Business Name',
+            'province' => 'Metro Manila',
+            'city' => 'Makati',
+            'business_category' => 'Retail',
+            'store_category' => 'Groceries',
+        ])->assertCreated()->assertJsonPath('data.fields', ['business_name']);
+    }
+
     public function test_admin_manages_options_with_usage_protection(): void
     {
         $this->actingAsAdmin(AdminRoleRegistry::SUPER_ADMIN);

@@ -8,12 +8,14 @@ use App\Enums\PaymentStatus;
 use App\Enums\RefundStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ListMerchantsRequest;
+use App\Http\Requests\Admin\UpdateMerchantProfileRequest;
 use App\Http\Requests\Admin\UpdateMerchantStatusRequest;
 use App\Http\Resources\Admin\AdminAuditLogResource;
 use App\Http\Resources\Admin\AdminMerchantResource;
 use App\Models\AdminAuditLog;
 use App\Models\Merchant;
 use App\Services\AdminAuditLogger;
+use App\Services\MerchantProfileChangeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -137,6 +139,21 @@ class MerchantManagementController extends Controller
                     'payments' => fn ($payments) => $payments->whereIn('status', $this->collectedPaymentStatuses()),
                 ], 'amount')
         );
+    }
+
+    /**
+     * An admin's direct edit of the merchant's details and documents. Unlike the merchant's own
+     * Store Profile edits, it needs no approval and is live immediately.
+     */
+    public function updateProfile(UpdateMerchantProfileRequest $request, Merchant $merchant, MerchantProfileChangeService $changes): JsonResponse
+    {
+        $fields = $changes->adminUpdate($merchant, $request->user(), $request->profileFields(), $request->documentUploads(), $request);
+
+        return response()->json([
+            'data' => $this->show($merchant->fresh()),
+            'fields' => $fields,
+            'message' => 'Merchant details saved.',
+        ]);
     }
 
     /**

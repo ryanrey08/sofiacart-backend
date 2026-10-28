@@ -23,6 +23,8 @@ class AuditAdminMutation
 {
     protected const EXCLUDED_ROUTE_NAMES = [
         'admin.merchants.status',
+        // Logged by MerchantProfileChangeService with the changed fields.
+        'admin.merchants.profile.update',
         // Logged by MerchantProfileChangeService with the change request and fields.
         'admin.merchant-change-requests.status',
         // Logged by ProductApprovalService with the decision, reason and changed fields.

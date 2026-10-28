@@ -66,6 +66,19 @@ class SubmitMerchantProfileChangeRequest extends FormRequest
     }
 
     /**
+     * Unchanged dropdown and address values are dropped before validation, so a store keeping a
+     * value that is no longer listed can still save its other edits.
+     */
+    protected function prepareForValidation(): void
+    {
+        $unchanged = app(RegistrationOptionsService::class)->unchangedFields($this->all(), $this->user()?->merchant);
+
+        foreach (array_intersect($unchanged, MerchantProfileChangeService::EDITABLE_FIELDS) as $field) {
+            $this->getInputSource()->remove($field);
+        }
+    }
+
+    /**
      * @return array<int, callable>
      */
     public function after(): array
